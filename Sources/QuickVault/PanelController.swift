@@ -15,7 +15,9 @@ final class QuickVaultPanel: NSPanel {
 final class PanelController: NSObject, NSWindowDelegate {
     private let panel: QuickVaultPanel
     private let store: VaultViewModel
+    private let settings: AppSettings
     private var keyMonitor: Any?
+    private var shouldPositionOnNextShow = true
 
     init(
         store: VaultViewModel,
@@ -23,6 +25,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         openSettings: @escaping () -> Void
     ) {
         self.store = store
+        self.settings = settings
         self.panel = QuickVaultPanel(
             contentRect: NSRect(x: 0, y: 0, width: 820, height: 520),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -53,41 +56,62 @@ final class PanelController: NSObject, NSWindowDelegate {
             onClose: { [weak self] in self?.hide() }
         )
         panel.contentView = NSHostingView(rootView: rootView)
+        shouldPositionOnNextShow = !panel.setFrameUsingName("valuet.mainWindow")
+        panel.setFrameAutosaveName("valuet.mainWindow")
 
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self,
                   self.panel.isKeyWindow,
-                  self.panel.attachedSheet == nil,
-                  event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
+                  self.panel.attachedSheet == nil
             else { return event }
+
+            let modifiers = event.modifierFlags
+            guard modifiers.intersection([.option, .control, .shift]).isEmpty else {
+                return event
+            }
+            let usesCommand = modifiers.contains(.command)
 
             switch Int(event.keyCode) {
             case kVK_UpArrow:
+                guard !usesCommand else { return event }
                 switch self.store.keyboardPane {
                 case .categories:
                     self.store.moveCategorySelection(-1)
                 case .records:
-                    self.store.moveSelectionAndCopy(-1)
+                    self.moveRecordSelection(-1)
                 case .value:
                     return event
                 }
                 return nil
             case kVK_DownArrow:
+                guard !usesCommand else { return event }
                 switch self.store.keyboardPane {
                 case .categories:
                     self.store.moveCategorySelection(1)
                 case .records:
-                    self.store.moveSelectionAndCopy(1)
+                    self.moveRecordSelection(1)
                 case .value:
                     return event
                 }
                 return nil
             case kVK_LeftArrow:
-                self.store.moveKeyboardPaneLeft()
-                return nil
+                if usesCommand || self.store.searchText.isEmpty {
+                    self.store.moveKeyboardPaneLeft()
+                    return nil
+                }
+                return event
             case kVK_RightArrow:
-                self.store.moveKeyboardPaneRight()
-                return nil
+                if usesCommand || self.store.searchText.isEmpty {
+                    self.store.moveKeyboardPaneRight()
+                    return nil
+                }
+                return event
+            case kVK_Return, kVK_ANSI_KeypadEnter:
+                if !usesCommand, self.store.keyboardPane == .value {
+                    self.store.copySelectedRecord()
+                    return nil
+                }
+                return event
             default:
                 return event
             }
@@ -113,7 +137,10 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func show() {
-        positionPanel()
+        if shouldPositionOnNextShow {
+            positionPanel()
+            shouldPositionOnNextShow = false
+        }
         store.keyboardPane = .records
         if panel.isMiniaturized {
             panel.deminiaturize(nil)
@@ -144,6 +171,13 @@ final class PanelController: NSObject, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         hide()
         return false
+    }
+
+    private func moveRecordSelection(_ direction: Int) {
+        store.moveSelection(direction)
+        if settings.autoCopyOnSelection {
+            store.copySelectedRecord()
+        }
     }
 
     private func positionPanel() {

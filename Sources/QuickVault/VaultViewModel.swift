@@ -192,12 +192,6 @@ final class VaultViewModel: ObservableObject {
         self.selectedRecordID = records[nextIndex].id
     }
 
-    func moveSelectionAndCopy(_ direction: Int) {
-        moveSelection(direction)
-        guard let content = selectedRecord?.content, !content.isEmpty else { return }
-        copy(content)
-    }
-
     func beginNewRecord() {
         recordEditor = RecordEditorContext(recordID: nil)
     }
@@ -294,11 +288,19 @@ final class VaultViewModel: ObservableObject {
         persist()
     }
 
-    func copy(_ value: String) {
+    func copySelectedRecord() {
+        guard let record = selectedRecord, !record.content.isEmpty else { return }
+        copy(
+            record.content,
+            notice: "已复制「\(record.name)」· 30 秒后清除"
+        )
+    }
+
+    func copy(_ value: String, notice: String = "已复制") {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(value, forType: .string)
-        showCopyNotice()
+        showCopyNotice(notice)
 
         clipboardClearWorkItem?.cancel()
         let workItem = DispatchWorkItem {
@@ -380,9 +382,9 @@ final class VaultViewModel: ObservableObject {
         }
     }
 
-    private func showCopyNotice() {
+    private func showCopyNotice(_ message: String) {
         copyNoticeWorkItem?.cancel()
-        copyNotice = "已复制"
+        copyNotice = message
 
         let workItem = DispatchWorkItem { [weak self] in
             self?.copyNotice = nil

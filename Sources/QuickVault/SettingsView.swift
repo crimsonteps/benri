@@ -51,11 +51,20 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+
+                Section("隐私与剪贴板") {
+                    Toggle("选择记录后自动复制", isOn: $settings.autoCopyOnSelection)
+                    Toggle("隐藏记录列表中的内容预览", isOn: $settings.hideRecordPreviews)
+
+                    Text("复制的内容会在 30 秒后清除，前提是剪贴板内容没有被替换。")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
             }
             .formStyle(.grouped)
         }
         .padding(24)
-        .frame(width: 460, height: 400)
+        .frame(width: 460, height: 580)
         .preferredColorScheme(settings.appearanceMode.colorScheme)
     }
 }

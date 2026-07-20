@@ -69,11 +69,16 @@ struct VaultPanelView: View {
                 openSettings: openSettings
             )
             .frame(width: sidebarExpanded ? 156 : 56)
+            .keyboardPaneFocus(store.keyboardPane == .categories)
 
             Divider().opacity(0.45)
 
-            RecordListView(store: store)
+            RecordListView(
+                store: store,
+                hidePreviews: settings.hideRecordPreviews
+            )
                 .frame(width: 264)
+                .keyboardPaneFocus(store.keyboardPane == .records)
 
             Divider().opacity(0.45)
 
@@ -82,6 +87,7 @@ struct VaultPanelView: View {
                 valueOnly: store.keyboardPane == .value
             )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .keyboardPaneFocus(store.keyboardPane == .value)
         }
     }
 
@@ -301,6 +307,7 @@ private struct SidebarRow: View {
 
 private struct RecordListView: View {
     @ObservedObject var store: VaultViewModel
+    let hidePreviews: Bool
     @FocusState private var searchIsFocused: Bool
 
     var body: some View {
@@ -321,6 +328,7 @@ private struct RecordListView: View {
                             RecordRow(
                                 record: record,
                                 categoryName: store.categoryName(for: record.categoryID),
+                                showsPreview: !hidePreviews,
                                 isSelected: store.selectedRecordID == record.id
                             ) {
                                 store.keyboardPane = .records
@@ -342,6 +350,7 @@ private struct RecordListView: View {
             }
         }
         .onChange(of: store.searchText) { _ in
+            store.keyboardPane = .records
             store.ensureSelection()
         }
         .onChange(of: store.selectedCategoryID) { _ in
@@ -395,6 +404,7 @@ private struct RecordListView: View {
 private struct RecordRow: View {
     let record: VaultRecord
     let categoryName: String
+    let showsPreview: Bool
     let isSelected: Bool
     let action: () -> Void
 
@@ -419,10 +429,12 @@ private struct RecordRow: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
                         .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 5))
-                    Text(preview)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    if showsPreview {
+                        Text(preview)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -509,6 +521,15 @@ private struct RecordDetailView: View {
             .disabled(record.content.isEmpty)
             .help("复制当前值")
             .padding(16)
+        }
+        .overlay(alignment: .bottomLeading) {
+            Text("← 返回   ↩ 复制")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(.thinMaterial, in: Capsule())
+                .padding(16)
         }
     }
 
@@ -600,6 +621,19 @@ private struct RecordDetailView: View {
                     }
                     .padding(16)
                 }
+            }
+        }
+    }
+}
+
+private extension View {
+    func keyboardPaneFocus(_ isActive: Bool) -> some View {
+        overlay(alignment: .top) {
+            if isActive {
+                Rectangle()
+                    .fill(Color.accentColor)
+                    .frame(height: 2)
+                    .allowsHitTesting(false)
             }
         }
     }
