@@ -57,13 +57,14 @@ final class VaultViewModel: ObservableObject {
     @Published var categoryEditor: CategoryEditorContext?
     @Published var alert: VaultAlert?
     @Published var keyboardPane: KeyboardPane = .records
+    @Published var isEditingRecordName = false
 
     let vaultFileURL: URL
 
     private let keyStore: VaultKeyStore
     private var fileStore: VaultFileStore?
     private var clipboardClearWorkItem: DispatchWorkItem?
-    private var recordContentSaveWorkItem: DispatchWorkItem?
+    private var recordSaveWorkItem: DispatchWorkItem?
 
     init(
         vaultFileURL: URL? = nil,
@@ -233,10 +234,22 @@ final class VaultViewModel: ObservableObject {
     }
 
     func deleteRecord(_ id: UUID) {
-        flushPendingRecordContentSave()
+        flushPendingRecordSave()
         payload.records.removeAll(where: { $0.id == id })
         ensureSelection()
         persist()
+    }
+
+    func updateRecordName(id: UUID, name: String) {
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanName.isEmpty,
+              let index = payload.records.firstIndex(where: { $0.id == id }),
+              payload.records[index].name != cleanName
+        else { return }
+
+        payload.records[index].name = cleanName
+        payload.records[index].updatedAt = Date()
+        scheduleRecordSave()
     }
 
     func updateRecordContent(id: UUID, content: String) {
@@ -247,20 +260,24 @@ final class VaultViewModel: ObservableObject {
         payload.records[index].content = content
         payload.records[index].updatedAt = Date()
 
-        recordContentSaveWorkItem?.cancel()
-        let workItem = DispatchWorkItem { [weak self] in
-            self?.recordContentSaveWorkItem = nil
-            self?.persist()
-        }
-        recordContentSaveWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: workItem)
+        scheduleRecordSave()
     }
 
-    func flushPendingRecordContentSave() {
-        guard recordContentSaveWorkItem != nil else { return }
-        recordContentSaveWorkItem?.cancel()
-        recordContentSaveWorkItem = nil
+    func flushPendingRecordSave() {
+        guard recordSaveWorkItem != nil else { return }
+        recordSaveWorkItem?.cancel()
+        recordSaveWorkItem = nil
         persist()
+    }
+
+    private func scheduleRecordSave() {
+        recordSaveWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.recordSaveWorkItem = nil
+            self?.persist()
+        }
+        recordSaveWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: workItem)
     }
 
     func saveCategory(id: UUID?, name: String) {
@@ -333,8 +350,8 @@ final class VaultViewModel: ObservableObject {
 
     func resetVault() {
         do {
-            recordContentSaveWorkItem?.cancel()
-            recordContentSaveWorkItem = nil
+            recordSaveWorkItem?.cancel()
+            recordSaveWorkItem = nil
             try fileStore?.remove()
             try keyStore.deleteKey()
             fileStore = nil

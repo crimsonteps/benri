@@ -58,19 +58,16 @@ struct VaultPanelView: View {
                 openSettings: openSettings
             )
             .frame(width: sidebarExpanded ? 156 : 56)
-            .keyboardPaneFocus(store.keyboardPane == .categories)
 
             Divider().opacity(0.45)
 
             RecordListView(store: store)
                 .frame(width: 264)
-                .keyboardPaneFocus(store.keyboardPane == .records)
 
             Divider().opacity(0.45)
 
             RecordDetailView(store: store)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .keyboardPaneFocus(store.keyboardPane == .value)
         }
     }
 
@@ -480,9 +477,8 @@ private struct RecordDetailView: View {
     private func recordDetail(_ record: VaultRecord) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
-                Text(record.name)
-                    .font(.system(size: 22, weight: .bold))
-                    .lineLimit(2)
+                InlineRecordNameEditor(store: store, record: record)
+                    .id(record.id)
             }
             .padding(20)
 
@@ -497,6 +493,55 @@ private struct RecordDetailView: View {
         Button("删除记录", role: .destructive) {
             store.deleteRecord(record.id)
         }
+    }
+}
+
+private struct InlineRecordNameEditor: View {
+    @ObservedObject var store: VaultViewModel
+    let record: VaultRecord
+
+    @State private var name: String
+    @FocusState private var isFocused: Bool
+
+    init(store: VaultViewModel, record: VaultRecord) {
+        self.store = store
+        self.record = record
+        _name = State(initialValue: record.name)
+    }
+
+    var body: some View {
+        TextField("记录名称", text: $name)
+            .textFieldStyle(.plain)
+            .font(.system(size: 22, weight: .bold))
+            .focused($isFocused)
+            .onChange(of: name) { newValue in
+                store.updateRecordName(id: record.id, name: newValue)
+            }
+            .onChange(of: isFocused) { focused in
+                store.isEditingRecordName = focused
+                store.keyboardPane = focused ? .value : .records
+                if !focused {
+                    finishEditing()
+                }
+            }
+            .onSubmit {
+                isFocused = false
+            }
+            .onDisappear {
+                store.isEditingRecordName = false
+                finishEditing()
+            }
+    }
+
+    private func finishEditing() {
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleanName.isEmpty {
+            name = store.record(id: record.id)?.name ?? record.name
+        } else {
+            name = cleanName
+            store.updateRecordName(id: record.id, name: cleanName)
+        }
+        store.flushPendingRecordSave()
     }
 }
 
@@ -531,27 +576,14 @@ private struct InlineRecordContentEditor: View {
                 store.updateRecordContent(id: record.id, content: newValue)
             }
             .onDisappear {
-                store.flushPendingRecordContentSave()
+                store.flushPendingRecordSave()
             }
     }
 
     private func handleFocusChange(_ isFocused: Bool) {
         store.keyboardPane = isFocused ? .value : .records
         if !isFocused {
-            store.flushPendingRecordContentSave()
-        }
-    }
-}
-
-private extension View {
-    func keyboardPaneFocus(_ isActive: Bool) -> some View {
-        overlay(alignment: .top) {
-            if isActive {
-                Rectangle()
-                    .fill(Color.accentColor)
-                    .frame(height: 2)
-                    .allowsHitTesting(false)
-            }
+            store.flushPendingRecordSave()
         }
     }
 }

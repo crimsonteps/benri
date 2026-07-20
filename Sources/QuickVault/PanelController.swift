@@ -64,6 +64,10 @@ final class PanelController: NSObject, NSWindowDelegate {
                   self.store.alert == nil
             else { return event }
 
+            if self.store.isEditingRecordName {
+                return event
+            }
+
             if let textView = self.panel.firstResponder as? NSTextView,
                !textView.isFieldEditor {
                 return event
@@ -173,7 +177,7 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func hide() {
         guard panel.attachedSheet == nil else { return }
-        store.flushPendingRecordContentSave()
+        store.flushPendingRecordSave()
         panel.orderOut(nil)
     }
 

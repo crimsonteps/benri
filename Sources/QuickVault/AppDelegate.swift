@@ -63,7 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        store.flushPendingRecordContentSave()
+        store.flushPendingRecordSave()
     }
 
     func applicationShouldHandleReopen(
