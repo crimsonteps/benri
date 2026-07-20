@@ -20,7 +20,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         self.store = store
         self.panel = QuickVaultPanel(
             contentRect: NSRect(x: 0, y: 0, width: 820, height: 520),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -34,9 +34,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.title = "valuet"
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
+        panel.titlebarSeparatorStyle = .none
         panel.isMovableByWindowBackground = false
-        panel.backgroundColor = .windowBackgroundColor
-        panel.isOpaque = true
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
         panel.hasShadow = true
         panel.contentMinSize = NSSize(width: 820, height: 520)
 

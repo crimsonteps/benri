@@ -23,7 +23,11 @@ struct VaultPanelView: View {
             }
         }
         .frame(minWidth: 820, minHeight: 520)
-        .quickVaultGlass(cornerRadius: 0)
+        .background {
+            Color.clear
+                .quickVaultGlass(cornerRadius: 0)
+                .ignoresSafeArea()
+        }
         .overlay(alignment: .bottom) {
             if let copyNotice = store.copyNotice {
                 Text(copyNotice)
