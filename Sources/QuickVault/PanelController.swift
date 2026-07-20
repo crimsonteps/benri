@@ -64,6 +64,19 @@ final class PanelController: NSObject, NSWindowDelegate {
                   self.store.alert == nil
             else { return event }
 
+            if let textView = self.panel.firstResponder as? NSTextView,
+               !textView.isFieldEditor {
+                let editorModifiers = event.modifierFlags
+                let isCommandReturn = editorModifiers.contains(.command)
+                    && editorModifiers.intersection([.option, .control, .shift]).isEmpty
+                    && [kVK_Return, kVK_ANSI_KeypadEnter].contains(Int(event.keyCode))
+                if isCommandReturn {
+                    self.showSelectedRecordMenu()
+                    return nil
+                }
+                return event
+            }
+
             let modifiers = event.modifierFlags
             guard modifiers.intersection([.option, .control, .shift]).isEmpty else {
                 return event
@@ -100,19 +113,8 @@ final class PanelController: NSObject, NSWindowDelegate {
                 }
                 return event
             case kVK_RightArrow:
-                if usesCommand {
+                if usesCommand || self.store.searchText.isEmpty {
                     self.store.moveKeyboardPaneRight()
-                    return nil
-                }
-                if self.store.searchText.isEmpty {
-                    switch self.store.keyboardPane {
-                    case .categories:
-                        self.store.moveKeyboardPaneRight()
-                    case .records, .value:
-                        guard self.store.selectedRecord != nil else { return nil }
-                        self.store.keyboardPane = .value
-                        self.store.beginEditingSelectedRecord()
-                    }
                     return nil
                 }
                 return event
@@ -180,6 +182,7 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func hide() {
         guard panel.attachedSheet == nil else { return }
+        store.flushPendingRecordContentSave()
         panel.orderOut(nil)
     }
 

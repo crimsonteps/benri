@@ -63,6 +63,7 @@ final class VaultViewModel: ObservableObject {
     private let keyStore: VaultKeyStore
     private var fileStore: VaultFileStore?
     private var clipboardClearWorkItem: DispatchWorkItem?
+    private var recordContentSaveWorkItem: DispatchWorkItem?
 
     init(
         vaultFileURL: URL? = nil,
@@ -153,11 +154,7 @@ final class VaultViewModel: ObservableObject {
         switch keyboardPane {
         case .categories:
             keyboardPane = .records
-        case .records:
-            if selectedRecord != nil {
-                keyboardPane = .value
-            }
-        case .value:
+        case .records, .value:
             break
         }
     }
@@ -189,11 +186,6 @@ final class VaultViewModel: ObservableObject {
 
     func beginNewRecord() {
         recordEditor = RecordEditorContext(recordID: nil)
-    }
-
-    func beginEditingSelectedRecord() {
-        guard let selectedRecordID else { return }
-        recordEditor = RecordEditorContext(recordID: selectedRecordID)
     }
 
     func beginNewCategory() {
@@ -241,8 +233,33 @@ final class VaultViewModel: ObservableObject {
     }
 
     func deleteRecord(_ id: UUID) {
+        flushPendingRecordContentSave()
         payload.records.removeAll(where: { $0.id == id })
         ensureSelection()
+        persist()
+    }
+
+    func updateRecordContent(id: UUID, content: String) {
+        guard let index = payload.records.firstIndex(where: { $0.id == id }),
+              payload.records[index].content != content
+        else { return }
+
+        payload.records[index].content = content
+        payload.records[index].updatedAt = Date()
+
+        recordContentSaveWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.recordContentSaveWorkItem = nil
+            self?.persist()
+        }
+        recordContentSaveWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: workItem)
+    }
+
+    func flushPendingRecordContentSave() {
+        guard recordContentSaveWorkItem != nil else { return }
+        recordContentSaveWorkItem?.cancel()
+        recordContentSaveWorkItem = nil
         persist()
     }
 
@@ -316,6 +333,8 @@ final class VaultViewModel: ObservableObject {
 
     func resetVault() {
         do {
+            recordContentSaveWorkItem?.cancel()
+            recordContentSaveWorkItem = nil
             try fileStore?.remove()
             try keyStore.deleteKey()
             fileStore = nil

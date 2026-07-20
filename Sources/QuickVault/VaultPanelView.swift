@@ -71,10 +71,7 @@ struct VaultPanelView: View {
 
             Divider().opacity(0.45)
 
-            RecordDetailView(
-                store: store,
-                valueOnly: store.keyboardPane == .value
-            )
+            RecordDetailView(store: store)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .keyboardPaneFocus(store.keyboardPane == .value)
         }
@@ -459,22 +456,14 @@ private struct RecordListEmptyView: View {
 
 private struct RecordDetailView: View {
     @ObservedObject var store: VaultViewModel
-    let valueOnly: Bool
 
     var body: some View {
         Group {
             if let record = store.selectedRecord {
-                if valueOnly {
-                    recordValue(record)
-                        .contextMenu {
-                            deleteRecordButton(record)
-                        }
-                } else {
-                    recordDetail(record)
-                        .contextMenu {
-                            deleteRecordButton(record)
-                        }
-                }
+                recordDetail(record)
+                    .contextMenu {
+                        deleteRecordButton(record)
+                    }
             } else {
                 VStack(spacing: 12) {
                     Image(systemName: "rectangle.and.text.magnifyingglass")
@@ -488,24 +477,6 @@ private struct RecordDetailView: View {
             }
         }
         .background(Color.clear)
-    }
-
-    private func recordValue(_ record: VaultRecord) -> some View {
-        ScrollView {
-            Text(record.content.isEmpty ? "暂无内容" : record.content)
-                .font(.system(size: 15))
-                .lineSpacing(6)
-                .foregroundStyle(record.content.isEmpty ? .secondary : .primary)
-                .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    copyContent(of: record)
-                }
-                .contextMenu {
-                    deleteRecordButton(record)
-                }
-                .padding(24)
-        }
     }
 
     private func recordDetail(_ record: VaultRecord) -> some View {
@@ -529,49 +500,57 @@ private struct RecordDetailView: View {
 
             Divider().opacity(0.45)
 
-            if record.content.isEmpty {
-                VStack(spacing: 10) {
-                    Image(systemName: "text.badge.plus")
-                        .font(.system(size: 28, weight: .light))
-                        .foregroundStyle(.tertiary)
-                    Text("这条记录还没有内容")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    Text(record.content)
-                        .font(.system(size: 14))
-                        .lineSpacing(5)
-                        .frame(maxWidth: .infinity, minHeight: 82, alignment: .topLeading)
-                        .padding(16)
-                        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 13)
-                                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            copyContent(of: record)
-                        }
-                        .contextMenu {
-                            deleteRecordButton(record)
-                        }
-                        .padding(16)
-                }
-            }
+            InlineRecordContentEditor(store: store, record: record)
+                .id(record.id)
         }
-    }
-
-    private func copyContent(of record: VaultRecord) {
-        guard !record.content.isEmpty else { return }
-        store.copy(record.content)
     }
 
     private func deleteRecordButton(_ record: VaultRecord) -> some View {
         Button("删除记录", role: .destructive) {
             store.deleteRecord(record.id)
+        }
+    }
+}
+
+private struct InlineRecordContentEditor: View {
+    @ObservedObject var store: VaultViewModel
+    let record: VaultRecord
+
+    @State private var content: String
+
+    init(store: VaultViewModel, record: VaultRecord) {
+        self.store = store
+        self.record = record
+        _content = State(initialValue: record.content)
+    }
+
+    var body: some View {
+        InlineContentTextEditor(
+            text: $content,
+            onFocusChange: handleFocusChange,
+            onDelete: {
+                store.deleteRecord(record.id)
+            }
+        )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
+            .overlay {
+                RoundedRectangle(cornerRadius: 13)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+            }
+            .padding(16)
+            .onChange(of: content) { newValue in
+                store.updateRecordContent(id: record.id, content: newValue)
+            }
+            .onDisappear {
+                store.flushPendingRecordContentSave()
+            }
+    }
+
+    private func handleFocusChange(_ isFocused: Bool) {
+        store.keyboardPane = isFocused ? .value : .records
+        if !isFocused {
+            store.flushPendingRecordContentSave()
         }
     }
 }
