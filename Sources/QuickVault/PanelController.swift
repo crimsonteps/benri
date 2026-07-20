@@ -66,14 +66,6 @@ final class PanelController: NSObject, NSWindowDelegate {
 
             if let textView = self.panel.firstResponder as? NSTextView,
                !textView.isFieldEditor {
-                let editorModifiers = event.modifierFlags
-                let isCommandReturn = editorModifiers.contains(.command)
-                    && editorModifiers.intersection([.option, .control, .shift]).isEmpty
-                    && [kVK_Return, kVK_ANSI_KeypadEnter].contains(Int(event.keyCode))
-                if isCommandReturn {
-                    self.showSelectedRecordMenu()
-                    return nil
-                }
                 return event
             }
 
@@ -120,8 +112,7 @@ final class PanelController: NSObject, NSWindowDelegate {
                 return event
             case kVK_Return, kVK_ANSI_KeypadEnter:
                 if usesCommand {
-                    self.showSelectedRecordMenu()
-                    return nil
+                    return event
                 }
                 if self.store.keyboardPane != .categories,
                    self.store.copySelectedRecord() {
@@ -189,32 +180,6 @@ final class PanelController: NSObject, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         hide()
         return false
-    }
-
-    @objc private func deleteSelectedRecord() {
-        guard let id = store.selectedRecordID else { return }
-        store.deleteRecord(id)
-    }
-
-    private func showSelectedRecordMenu() {
-        guard store.selectedRecord != nil,
-              let contentView = panel.contentView
-        else { return }
-
-        let menu = NSMenu()
-        let deleteItem = NSMenuItem(
-            title: "删除记录",
-            action: #selector(deleteSelectedRecord),
-            keyEquivalent: ""
-        )
-        deleteItem.target = self
-        menu.addItem(deleteItem)
-
-        let point = NSPoint(
-            x: min(300, contentView.bounds.maxX - 24),
-            y: contentView.bounds.midY
-        )
-        menu.popUp(positioning: deleteItem, at: point, in: contentView)
     }
 
     private func positionPanel() {

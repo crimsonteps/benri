@@ -485,16 +485,6 @@ private struct RecordDetailView: View {
                 Text(record.name)
                     .font(.system(size: 22, weight: .bold))
                     .lineLimit(2)
-
-                HStack {
-                    Spacer(minLength: 0)
-                    Text(store.categoryName(for: record.categoryID))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
-                }
             }
             .padding(20)
 
