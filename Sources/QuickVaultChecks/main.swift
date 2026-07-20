@@ -1,0 +1,160 @@
+import Darwin
+import Foundation
+import QuickVaultCore
+
+private struct CheckRunner {
+    private(set) var failures = 0
+    private(set) var checks = 0
+
+    mutating func expect(_ condition: @autoclosure () -> Bool, _ name: String) {
+        checks += 1
+        if condition() {
+            print("✓ \(name)")
+        } else {
+            failures += 1
+            print("✗ \(name)")
+        }
+    }
+
+    mutating func expectThrows(_ name: String, _ operation: () throws -> Void) {
+        checks += 1
+        do {
+            try operation()
+            failures += 1
+            print("✗ \(name)")
+        } catch {
+            print("✓ \(name)")
+        }
+    }
+}
+
+private var runner = CheckRunner()
+private let fixedDate = Date(timeIntervalSince1970: 1_700_000_000)
+
+private func checkModelRoundTrip() throws {
+    let record = VaultRecord(
+        name: "测试服务器",
+        categoryID: VaultDefaults.serverCategoryID,
+        fields: [
+            RecordField(label: "账号", value: "deploy"),
+            RecordField(label: "密码", value: "s3cret", isSensitive: true, sortOrder: 1)
+        ],
+        createdAt: fixedDate,
+        updatedAt: fixedDate
+    )
+    let payload = VaultPayload(records: [record])
+    let key = VaultCrypto.generateKeyData()
+    let encrypted = try VaultCrypto.encrypt(payload, keyData: key)
+    let decoded = try VaultCrypto.decrypt(encrypted, keyData: key)
+    runner.expect(decoded == payload, "模型加密编解码往返一致")
+}
+
+private func checkSearchAndCategories() {
+    let payload = VaultPayload(records: [
+        VaultRecord(
+            name: "生产服务器",
+            categoryID: VaultDefaults.serverCategoryID,
+            fields: [RecordField(label: "备注", value: "needle")]
+        ),
+        VaultRecord(name: "Apple ID", categoryID: VaultDefaults.personalCategoryID),
+        VaultRecord(name: "阿里云", categoryID: VaultDefaults.serverCategoryID)
+    ])
+
+    runner.expect(
+        payload.filteredRecords(categoryID: nil, query: "服务器").map(\.name) == ["生产服务器"],
+        "仅按记录名称搜索"
+    )
+    runner.expect(
+        payload.filteredRecords(categoryID: nil, query: "needle").isEmpty,
+        "字段内容不会进入搜索"
+    )
+    runner.expect(
+        payload.filteredRecords(categoryID: VaultDefaults.serverCategoryID, query: "").map(\.name)
+            == ["阿里云", "生产服务器"],
+        "分类过滤后按名称排序"
+    )
+
+    let customID = UUID()
+    var mutablePayload = VaultPayload(
+        categories: VaultDefaults.categories + [VaultCategory(id: customID, name: "项目", sortOrder: 4)],
+        records: [VaultRecord(name: "内网", categoryID: customID)]
+    )
+    mutablePayload.deleteCustomCategory(id: customID)
+    runner.expect(
+        mutablePayload.records.first?.categoryID == VaultDefaults.otherCategoryID,
+        "删除自定义分类时记录迁移到其他"
+    )
+}
+
+private func checkCrypto() throws {
+    let secret = "do-not-store-this-in-plaintext"
+    let payload = VaultPayload(records: [
+        VaultRecord(
+            name: "测试账号",
+            categoryID: VaultDefaults.personalCategoryID,
+            fields: [RecordField(label: "密码", value: secret, isSensitive: true)],
+            createdAt: fixedDate,
+            updatedAt: fixedDate
+        )
+    ])
+    let key = VaultCrypto.generateKeyData()
+    let encrypted = try VaultCrypto.encrypt(payload, keyData: key)
+
+    runner.expect(encrypted.range(of: Data(secret.utf8)) == nil, "加密文件不包含字段明文")
+    runner.expectThrows("错误密钥无法解密") {
+        _ = try VaultCrypto.decrypt(encrypted, keyData: VaultCrypto.generateKeyData())
+    }
+    runner.expectThrows("普通文本不能伪装成保险库") {
+        _ = try VaultCrypto.decrypt(Data("plain json".utf8), keyData: key)
+    }
+}
+
+private func checkFileStore() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("QuickVaultChecks-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let fileURL = directory.appendingPathComponent("vault.qv")
+    let key = VaultCrypto.generateKeyData()
+    let store = VaultFileStore(fileURL: fileURL, keyData: key)
+    let payload = VaultPayload(records: [
+        VaultRecord(
+            name: "本地记录",
+            categoryID: VaultDefaults.workCategoryID,
+            createdAt: fixedDate,
+            updatedAt: fixedDate
+        )
+    ])
+
+    try store.save(payload)
+    runner.expect(store.exists, "原子写入创建保险库文件")
+    let loadedPayload = try store.load()
+    runner.expect(loadedPayload == payload, "保险库文件可正确重新载入")
+
+    let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+    runner.expect(
+        attributes[.posixPermissions] as? NSNumber == NSNumber(value: 0o600),
+        "保险库文件权限为 0600"
+    )
+
+    let originalData = try Data(contentsOf: fileURL)
+    let wrongStore = VaultFileStore(fileURL: fileURL, keyData: VaultCrypto.generateKeyData())
+    runner.expectThrows("解密失败不会被当作空保险库") {
+        _ = try wrongStore.load()
+    }
+    let dataAfterFailedLoad = try Data(contentsOf: fileURL)
+    runner.expect(dataAfterFailedLoad == originalData, "解密失败后原文件未被覆盖")
+}
+
+do {
+    try checkModelRoundTrip()
+    checkSearchAndCategories()
+    try checkCrypto()
+    try checkFileStore()
+} catch {
+    print("✗ 测试运行异常：\(error.localizedDescription)")
+    exit(1)
+}
+
+print("\n完成 \(runner.checks) 项检查，失败 \(runner.failures) 项。")
+exit(runner.failures == 0 ? 0 : 1)

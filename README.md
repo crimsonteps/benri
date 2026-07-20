@@ -1,0 +1,69 @@
+# QuickVault
+
+QuickVault 是一个只在本机保存数据的 macOS 菜单栏资料面板。按 `⌥Space` 唤起，按分类浏览记录，也可以直接根据记录名称搜索。
+
+## 功能
+
+- 三栏面板：分类、记录列表、字段详情
+- 自定义分类，以及个人、工作、服务器、其他四个默认分类
+- 每条记录可保存任意数量的普通字段或敏感字段
+- 字段单独复制，敏感字段默认隐藏
+- 复制敏感字段 30 秒后自动清理剪贴板，前提是剪贴板内容没有被替换
+- `⌘N` 新建记录，`⌘E` 编辑记录，`Esc` 隐藏面板
+- 自动适配 macOS 浅色和深色外观
+
+## 本地安全
+
+- 数据文件：`~/Library/Application Support/QuickVault/vault.qv`
+- 数据使用 AES-256-GCM 整体加密
+- 32 字节随机密钥保存在 macOS Keychain
+- Keychain 条目设置为仅本设备、设备解锁时可访问
+- 不使用 Touch ID，不进行网络请求，不进行云同步
+- 数据文件权限为 `0600`，应用目录权限为 `0700`
+
+如果保险库无法解密，QuickVault 不会自动覆盖原文件。面板会提供“打开数据目录”和“重置保险库”两个明确操作。
+
+## 构建和运行
+
+本项目只需要 macOS Command Line Tools，不依赖完整 Xcode。
+
+```bash
+make test
+make app
+open dist/QuickVault.app
+```
+
+也可以直接运行开发版本：
+
+```bash
+swift run QuickVault
+```
+
+`make app` 会执行 Release 构建、生成原生应用图标、创建 `dist/QuickVault.app` 并进行 ad-hoc codesign。
+
+## 测试
+
+当前机器的精简 Command Line Tools 不包含 XCTest 或 Swift Testing 运行库，因此项目提供零依赖的 `QuickVaultChecks` 测试可执行文件：
+
+```bash
+make test
+```
+
+检查范围包括：
+
+- 模型加密编解码
+- 仅按记录名称搜索
+- 分类过滤和排序
+- 删除分类后的记录迁移
+- 密文不包含字段明文
+- 错误密钥拒绝解密
+- 原子文件保存和 `0600` 权限
+- 解密失败不覆盖原文件
+
+## 重置
+
+从错误界面选择“重置保险库”会删除本地加密文件和对应 Keychain 密钥。此操作无法撤销。
+
+## 项目范围
+
+v1 不包含云同步、浏览器自动填充、导入导出、密码生成器、开机启动和跨平台支持。
