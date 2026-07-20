@@ -12,6 +12,12 @@ struct CategoryEditorContext: Identifiable, Equatable {
     let categoryID: UUID?
 }
 
+enum KeyboardPane {
+    case categories
+    case records
+    case value
+}
+
 enum VaultAlert: Identifiable, Equatable {
     case saveError(String)
     case confirmReset
@@ -54,6 +60,7 @@ final class VaultViewModel: ObservableObject {
     @Published var categoryEditor: CategoryEditorContext?
     @Published var alert: VaultAlert?
     @Published var copyNotice: String?
+    @Published var keyboardPane: KeyboardPane = .records
 
     let vaultFileURL: URL
 
@@ -122,7 +129,42 @@ final class VaultViewModel: ObservableObject {
 
     func selectCategory(_ categoryID: UUID?) {
         selectedCategoryID = categoryID
+        keyboardPane = .categories
         ensureSelection()
+    }
+
+    func moveCategorySelection(_ direction: Int) {
+        let categoryIDs: [UUID?] = [nil] + sortedCategories.map { Optional($0.id) }
+        guard !categoryIDs.isEmpty else { return }
+
+        let currentIndex = categoryIDs.firstIndex(where: { $0 == selectedCategoryID }) ?? 0
+        let nextIndex = (currentIndex + direction + categoryIDs.count) % categoryIDs.count
+        selectedCategoryID = categoryIDs[nextIndex]
+        ensureSelection()
+    }
+
+    func moveKeyboardPaneLeft() {
+        switch keyboardPane {
+        case .categories:
+            break
+        case .records:
+            keyboardPane = .categories
+        case .value:
+            keyboardPane = .records
+        }
+    }
+
+    func moveKeyboardPaneRight() {
+        switch keyboardPane {
+        case .categories:
+            keyboardPane = .records
+        case .records:
+            if selectedRecord != nil {
+                keyboardPane = .value
+            }
+        case .value:
+            break
+        }
     }
 
     func ensureSelection() {
@@ -241,18 +283,6 @@ final class VaultViewModel: ObservableObject {
     func requestDeleteCategory(_ id: UUID) {
         guard let category = category(id: id), !category.isBuiltIn else { return }
         alert = .confirmDeleteCategory(id)
-    }
-
-    var canDeleteSelectedCategory: Bool {
-        guard let selectedCategoryID, let category = category(id: selectedCategoryID) else {
-            return false
-        }
-        return !category.isBuiltIn
-    }
-
-    func requestDeleteSelectedCategory() {
-        guard let selectedCategoryID else { return }
-        requestDeleteCategory(selectedCategoryID)
     }
 
     func deleteCategory(_ id: UUID) {

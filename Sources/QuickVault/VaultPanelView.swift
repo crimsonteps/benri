@@ -77,7 +77,10 @@ struct VaultPanelView: View {
 
             Divider().opacity(0.45)
 
-            RecordDetailView(store: store)
+            RecordDetailView(
+                store: store,
+                valueOnly: store.keyboardPane == .value
+            )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
@@ -156,7 +159,7 @@ private struct SidebarView: View {
                                 Button("重命名") {
                                     store.beginRenamingCategory(category.id)
                                 }
-                                Button("删除", role: .destructive) {
+                                Button("删除分类", role: .destructive) {
                                     store.requestDeleteCategory(category.id)
                                 }
                             }
@@ -179,13 +182,11 @@ private struct SidebarView: View {
             if isExpanded {
                 HStack(spacing: 3) {
                     newCategoryButton(showLabel: true)
-                    deleteCategoryButton
                     settingsButton
                 }
             } else {
                 VStack(spacing: 2) {
                     newCategoryButton(showLabel: false)
-                    deleteCategoryButton
                     settingsButton
                 }
             }
@@ -209,15 +210,6 @@ private struct SidebarView: View {
             .frame(height: 30)
         }
         .help("新建分类")
-    }
-
-    private var deleteCategoryButton: some View {
-        Button(role: .destructive, action: store.requestDeleteSelectedCategory) {
-            Image(systemName: "trash")
-                .frame(width: 28, height: 30)
-        }
-        .disabled(!store.canDeleteSelectedCategory)
-        .help("删除当前分类")
     }
 
     private var settingsButton: some View {
@@ -331,6 +323,7 @@ private struct RecordListView: View {
                                 categoryName: store.categoryName(for: record.categoryID),
                                 isSelected: store.selectedRecordID == record.id
                             ) {
+                                store.keyboardPane = .records
                                 store.selectedRecordID = record.id
                             }
                         }
@@ -468,11 +461,16 @@ private struct RecordListEmptyView: View {
 
 private struct RecordDetailView: View {
     @ObservedObject var store: VaultViewModel
+    let valueOnly: Bool
 
     var body: some View {
         Group {
             if let record = store.selectedRecord {
-                recordDetail(record)
+                if valueOnly {
+                    recordValue(record)
+                } else {
+                    recordDetail(record)
+                }
             } else {
                 VStack(spacing: 12) {
                     Image(systemName: "rectangle.and.text.magnifyingglass")
@@ -486,6 +484,32 @@ private struct RecordDetailView: View {
             }
         }
         .background(Color.clear)
+    }
+
+    private func recordValue(_ record: VaultRecord) -> some View {
+        ZStack(alignment: .topTrailing) {
+            ScrollView {
+                Text(record.content.isEmpty ? "暂无内容" : record.content)
+                    .font(.system(size: 15))
+                    .lineSpacing(6)
+                    .foregroundStyle(record.content.isEmpty ? .secondary : .primary)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .textSelection(.enabled)
+                    .padding(24)
+                    .padding(.trailing, 36)
+            }
+
+            Button {
+                store.copy(record.content)
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .frame(width: 30, height: 30)
+            }
+            .buttonStyle(.plain)
+            .disabled(record.content.isEmpty)
+            .help("复制当前值")
+            .padding(16)
+        }
     }
 
     private func recordDetail(_ record: VaultRecord) -> some View {

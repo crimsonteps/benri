@@ -15,7 +15,6 @@ final class QuickVaultPanel: NSPanel {
 final class PanelController: NSObject, NSWindowDelegate {
     private let panel: QuickVaultPanel
     private let store: VaultViewModel
-    private var isMiniaturizing = false
     private var keyMonitor: Any?
 
     init(
@@ -64,10 +63,30 @@ final class PanelController: NSObject, NSWindowDelegate {
 
             switch Int(event.keyCode) {
             case kVK_UpArrow:
-                self.store.moveSelectionAndCopy(-1)
+                switch self.store.keyboardPane {
+                case .categories:
+                    self.store.moveCategorySelection(-1)
+                case .records:
+                    self.store.moveSelectionAndCopy(-1)
+                case .value:
+                    return event
+                }
                 return nil
             case kVK_DownArrow:
-                self.store.moveSelectionAndCopy(1)
+                switch self.store.keyboardPane {
+                case .categories:
+                    self.store.moveCategorySelection(1)
+                case .records:
+                    self.store.moveSelectionAndCopy(1)
+                case .value:
+                    return event
+                }
+                return nil
+            case kVK_LeftArrow:
+                self.store.moveKeyboardPaneLeft()
+                return nil
+            case kVK_RightArrow:
+                self.store.moveKeyboardPaneRight()
                 return nil
             default:
                 return event
@@ -95,6 +114,7 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func show() {
         positionPanel()
+        store.keyboardPane = .records
         if panel.isMiniaturized {
             panel.deminiaturize(nil)
         }
@@ -119,26 +139,6 @@ final class PanelController: NSObject, NSWindowDelegate {
     func hide() {
         guard panel.attachedSheet == nil else { return }
         panel.orderOut(nil)
-    }
-
-    func windowDidResignKey(_ notification: Notification) {
-        if CommandLine.arguments.contains("--show") {
-            return
-        }
-        if isMiniaturizing || panel.isMiniaturized {
-            return
-        }
-        if panel.attachedSheet == nil {
-            hide()
-        }
-    }
-
-    func windowWillMiniaturize(_ notification: Notification) {
-        isMiniaturizing = true
-    }
-
-    func windowDidMiniaturize(_ notification: Notification) {
-        isMiniaturizing = false
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
