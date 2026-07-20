@@ -48,7 +48,7 @@ struct CategoryEditorView: View {
         }
         .padding(22)
         .frame(width: 360)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .quickVaultGlass(cornerRadius: 18)
         .onAppear {
             DispatchQueue.main.async {
                 nameIsFocused = true

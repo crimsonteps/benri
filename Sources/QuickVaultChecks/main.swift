@@ -35,10 +35,7 @@ private func checkModelRoundTrip() throws {
     let record = VaultRecord(
         name: "测试服务器",
         categoryID: VaultDefaults.serverCategoryID,
-        fields: [
-            RecordField(label: "账号", value: "deploy"),
-            RecordField(label: "密码", value: "s3cret", isSensitive: true, sortOrder: 1)
-        ],
+        content: "账号: deploy\n密码: s3cret",
         createdAt: fixedDate,
         updatedAt: fixedDate
     )
@@ -54,7 +51,7 @@ private func checkSearchAndCategories() {
         VaultRecord(
             name: "生产服务器",
             categoryID: VaultDefaults.serverCategoryID,
-            fields: [RecordField(label: "备注", value: "needle")]
+            content: "备注: needle"
         ),
         VaultRecord(name: "Apple ID", categoryID: VaultDefaults.personalCategoryID),
         VaultRecord(name: "阿里云", categoryID: VaultDefaults.serverCategoryID)
@@ -66,7 +63,7 @@ private func checkSearchAndCategories() {
     )
     runner.expect(
         payload.filteredRecords(categoryID: nil, query: "needle").isEmpty,
-        "字段内容不会进入搜索"
+        "正文内容不会进入搜索"
     )
     runner.expect(
         payload.filteredRecords(categoryID: VaultDefaults.serverCategoryID, query: "").map(\.name)
@@ -86,13 +83,47 @@ private func checkSearchAndCategories() {
     )
 }
 
+private func checkLegacyMigration() throws {
+    let legacyJSON = """
+    {
+      "formatVersion": 1,
+      "categories": [],
+      "records": [
+        {
+          "id": "10000000-0000-4000-8000-000000000001",
+          "name": "旧记录",
+          "categoryID": "00000000-0000-4000-8000-000000000001",
+          "fields": [
+            {"label": "账号", "value": "deploy", "isSensitive": false, "sortOrder": 0},
+            {"label": "密码", "value": "s3cret", "isSensitive": true, "sortOrder": 1}
+          ],
+          "createdAt": 0,
+          "updatedAt": 0
+        }
+      ]
+    }
+    """
+
+    var payload = try JSONDecoder().decode(VaultPayload.self, from: Data(legacyJSON.utf8))
+    runner.expect(
+        payload.records.first?.content == "账号: deploy\n密码: s3cret",
+        "旧字段自动合并为正文"
+    )
+    runner.expect(payload.migrateToCurrentFormat(), "旧格式版本会执行迁移")
+    runner.expect(payload.formatVersion == VaultPayload.currentFormatVersion, "迁移后格式版本正确")
+
+    let encoded = try JSONEncoder().encode(payload)
+    let encodedText = String(decoding: encoded, as: UTF8.self)
+    runner.expect(!encodedText.contains("\"fields\""), "新格式不再保存字段数组")
+}
+
 private func checkCrypto() throws {
     let secret = "do-not-store-this-in-plaintext"
     let payload = VaultPayload(records: [
         VaultRecord(
             name: "测试账号",
             categoryID: VaultDefaults.personalCategoryID,
-            fields: [RecordField(label: "密码", value: secret, isSensitive: true)],
+            content: secret,
             createdAt: fixedDate,
             updatedAt: fixedDate
         )
@@ -149,6 +180,7 @@ private func checkFileStore() throws {
 do {
     try checkModelRoundTrip()
     checkSearchAndCategories()
+    try checkLegacyMigration()
     try checkCrypto()
     try checkFileStore()
 } catch {

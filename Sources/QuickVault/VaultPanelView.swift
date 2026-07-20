@@ -6,6 +6,9 @@ struct VaultPanelView: View {
     @ObservedObject var store: VaultViewModel
     let onClose: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var sidebarExpanded = false
+
     var body: some View {
         Group {
             if let fatalErrorMessage = store.fatalErrorMessage {
@@ -19,11 +22,11 @@ struct VaultPanelView: View {
             }
         }
         .frame(width: 820, height: 520)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .quickVaultGlass(cornerRadius: 18)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.primary.opacity(0.11), lineWidth: 1)
         }
         .overlay(alignment: .bottom) {
             if let copyNotice = store.copyNotice {
@@ -31,10 +34,7 @@ struct VaultPanelView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .padding(.horizontal, 14)
                     .padding(.vertical, 7)
-                    .background(.regularMaterial, in: Capsule())
-                    .overlay {
-                        Capsule().stroke(Color.primary.opacity(0.1), lineWidth: 1)
-                    }
+                    .quickVaultGlass(cornerRadius: 999)
                     .padding(.bottom, 16)
                     .transition(.opacity)
             }
@@ -66,15 +66,23 @@ struct VaultPanelView: View {
 
     private var mainContent: some View {
         HStack(spacing: 0) {
-            SidebarView(store: store)
-                .frame(width: 154)
+            SidebarView(
+                store: store,
+                isExpanded: sidebarExpanded,
+                toggleExpanded: {
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+                        sidebarExpanded.toggle()
+                    }
+                }
+            )
+            .frame(width: sidebarExpanded ? 156 : 56)
 
-            Divider()
+            Divider().opacity(0.45)
 
             RecordListView(store: store)
-                .frame(width: 252)
+                .frame(width: 264)
 
-            Divider()
+            Divider().opacity(0.45)
 
             RecordDetailView(store: store)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -120,27 +128,21 @@ struct VaultPanelView: View {
 
 private struct SidebarView: View {
     @ObservedObject var store: VaultViewModel
+    let isExpanded: Bool
+    let toggleExpanded: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 9) {
-                Image(systemName: "lock.square.stack.fill")
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(.tint)
-                Text("QuickVault")
-                    .font(.system(size: 15, weight: .semibold))
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 18)
-            .padding(.bottom, 14)
+            header
 
             ScrollView {
-                VStack(spacing: 3) {
+                VStack(spacing: 4) {
                     SidebarRow(
                         title: "全部",
                         icon: "square.stack.3d.up.fill",
                         count: store.recordCount(for: nil),
-                        isSelected: store.selectedCategoryID == nil
+                        isSelected: store.selectedCategoryID == nil,
+                        isExpanded: isExpanded
                     ) {
                         store.selectCategory(nil)
                     }
@@ -150,7 +152,8 @@ private struct SidebarView: View {
                             title: category.name,
                             icon: iconName(for: category),
                             count: store.recordCount(for: category.id),
-                            isSelected: store.selectedCategoryID == category.id
+                            isSelected: store.selectedCategoryID == category.id,
+                            isExpanded: isExpanded
                         ) {
                             store.selectCategory(category.id)
                         }
@@ -166,23 +169,55 @@ private struct SidebarView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, 7)
             }
 
             Spacer(minLength: 8)
 
             Button(action: store.beginNewCategory) {
-                Label("新建分类", systemImage: "plus")
-                    .font(.system(size: 12, weight: .medium))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
+                Group {
+                    if isExpanded {
+                        Label("新建分类", systemImage: "plus")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        Image(systemName: "plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .font(.system(size: 12, weight: .medium))
+                .padding(.horizontal, isExpanded ? 10 : 0)
+                .frame(height: 34)
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .padding(8)
+            .padding(7)
+            .help("新建分类")
         }
-        .background(.thinMaterial)
+        .background(Color.primary.opacity(0.025))
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            Button(action: toggleExpanded) {
+                Image(systemName: isExpanded ? "sidebar.left" : "lock.square.stack.fill")
+                    .font(.system(size: isExpanded ? 14 : 18, weight: .semibold))
+                    .foregroundStyle(isExpanded ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tint))
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(isExpanded ? "折叠分类栏" : "展开分类栏")
+
+            if isExpanded {
+                Text("QuickVault")
+                    .font(.system(size: 15, weight: .semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.horizontal, isExpanded ? 10 : 13)
+        .padding(.top, 15)
+        .padding(.bottom, 12)
     }
 
     private func iconName(for category: VaultCategory) -> String {
@@ -206,6 +241,7 @@ private struct SidebarRow: View {
     let icon: String
     let count: Int
     let isSelected: Bool
+    let isExpanded: Bool
     let action: () -> Void
 
     var body: some View {
@@ -213,24 +249,29 @@ private struct SidebarRow: View {
             HStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.system(size: 12, weight: .medium))
-                    .frame(width: 16)
-                Text(title)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                Text("\(count)")
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
+
+                if isExpanded {
+                    Text(title)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text("\(count)")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
             }
             .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-            .padding(.horizontal, 9)
-            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: isExpanded ? .leading : .center)
+            .padding(.horizontal, isExpanded ? 9 : 0)
+            .frame(height: 34)
             .contentShape(Rectangle())
             .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
             }
         }
         .buttonStyle(.plain)
+        .help("\(title)，\(count) 条记录")
     }
 }
 
@@ -243,7 +284,7 @@ private struct RecordListView: View {
             searchBar
                 .padding(12)
 
-            Divider()
+            Divider().opacity(0.45)
 
             if store.filteredRecords.isEmpty {
                 RecordListEmptyView(hasQuery: !store.searchText.isEmpty) {
@@ -251,7 +292,7 @@ private struct RecordListView: View {
                 }
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 4) {
+                    LazyVStack(spacing: 5) {
                         ForEach(store.filteredRecords) { record in
                             RecordRow(
                                 record: record,
@@ -266,7 +307,7 @@ private struct RecordListView: View {
                 }
             }
         }
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.72))
+        .background(Color.primary.opacity(0.015))
         .onReceive(NotificationCenter.default.publisher(for: .quickVaultFocusSearch)) { _ in
             searchIsFocused = true
         }
@@ -305,21 +346,18 @@ private struct RecordListView: View {
                 }
             }
             .padding(.horizontal, 10)
-            .frame(height: 32)
-            .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color(nsColor: .textBackgroundColor).opacity(0.9))
-            }
+            .frame(height: 33)
+            .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 10))
             .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.primary.opacity(0.09), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.primary.opacity(0.1), lineWidth: 1)
             }
 
             Button(action: store.beginNewRecord) {
                 Image(systemName: "plus")
                     .font(.system(size: 12, weight: .semibold))
-                    .frame(width: 30, height: 30)
-                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .frame(width: 31, height: 31)
+                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 10))
                     .foregroundStyle(Color.white)
             }
             .buttonStyle(.plain)
@@ -335,26 +373,40 @@ private struct RecordRow: View {
     let isSelected: Bool
     let action: () -> Void
 
+    private var preview: String {
+        let firstLine = record.content
+            .split(whereSeparator: \Character.isNewline)
+            .map(String.init)
+            .first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty })
+        return firstLine ?? "暂无内容"
+    }
+
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(record.name)
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
-                HStack(spacing: 6) {
+
+                HStack(spacing: 7) {
                     Text(categoryName)
-                    Text("\(record.fields.count) 个字段")
+                        .font(.system(size: 10, weight: .semibold))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 5))
+                    Text(preview)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 10)
             .padding(.vertical, 9)
             .contentShape(Rectangle())
             .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.17) : Color.clear)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(isSelected ? Color.accentColor.opacity(0.19) : Color.clear)
             }
         }
         .buttonStyle(.plain)
@@ -384,7 +436,6 @@ private struct RecordListEmptyView: View {
 
 private struct RecordDetailView: View {
     @ObservedObject var store: VaultViewModel
-    @State private var revealedFieldIDs = Set<UUID>()
 
     var body: some View {
         Group {
@@ -395,23 +446,20 @@ private struct RecordDetailView: View {
                     Image(systemName: "rectangle.and.text.magnifyingglass")
                         .font(.system(size: 34, weight: .light))
                         .foregroundStyle(.tertiary)
-                    Text("选择一条记录查看详情")
+                    Text("选择一条记录查看内容")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.78))
-        .onChange(of: store.selectedRecordID) { _ in
-            revealedFieldIDs.removeAll()
-        }
+        .background(Color.clear)
     }
 
     private func recordDetail(_ record: VaultRecord) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 7) {
                     Text(record.name)
                         .font(.system(size: 22, weight: .bold))
                         .lineLimit(2)
@@ -448,17 +496,17 @@ private struct RecordDetailView: View {
             }
             .padding(20)
 
-            Divider()
+            Divider().opacity(0.45)
 
-            if record.fields.isEmpty {
+            if record.content.isEmpty {
                 VStack(spacing: 10) {
-                    Image(systemName: "rectangle.and.pencil.and.ellipsis")
-                        .font(.system(size: 27, weight: .light))
+                    Image(systemName: "text.badge.plus")
+                        .font(.system(size: 28, weight: .light))
                         .foregroundStyle(.tertiary)
-                    Text("这条记录还没有字段")
+                    Text("这条记录还没有内容")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.secondary)
-                    Button("添加字段") {
+                    Button("添加内容") {
                         store.beginEditingSelectedRecord()
                     }
                     .buttonStyle(.link)
@@ -466,80 +514,37 @@ private struct RecordDetailView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 10) {
-                        ForEach(record.fields.sorted(by: { $0.sortOrder < $1.sortOrder })) { field in
-                            FieldValueRow(
-                                field: field,
-                                isRevealed: revealedFieldIDs.contains(field.id),
-                                toggleReveal: {
-                                    if revealedFieldIDs.contains(field.id) {
-                                        revealedFieldIDs.remove(field.id)
-                                    } else {
-                                        revealedFieldIDs.insert(field.id)
-                                    }
-                                },
-                                copyValue: {
-                                    store.copy(field.value, sensitive: field.isSensitive)
-                                }
-                            )
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("内容")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button {
+                                store.copy(record.content)
+                            } label: {
+                                Label("复制", systemImage: "doc.on.doc")
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            .buttonStyle(.plain)
+                            .help("复制全部内容")
                         }
+
+                        Text(record.content)
+                            .font(.system(size: 14))
+                            .lineSpacing(5)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                            .textSelection(.enabled)
+                    }
+                    .padding(16)
+                    .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 13)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                     }
                     .padding(16)
                 }
             }
-        }
-    }
-}
-
-private struct FieldValueRow: View {
-    let field: RecordField
-    let isRevealed: Bool
-    let toggleReveal: () -> Void
-    let copyValue: () -> Void
-
-    private var displayedValue: String {
-        if field.isSensitive && !isRevealed {
-            return String(repeating: "•", count: max(8, min(field.value.count, 16)))
-        }
-        return field.value.isEmpty ? "未填写" : field.value
-    }
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(field.label)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Text(displayedValue)
-                    .font(.system(size: 13, design: field.isSensitive && !isRevealed ? .monospaced : .default))
-                    .foregroundStyle(field.value.isEmpty ? .secondary : .primary)
-                    .lineLimit(field.isSensitive ? 1 : 4)
-                    .textSelection(.enabled)
-            }
-
-            Spacer(minLength: 8)
-
-            if field.isSensitive {
-                Button(action: toggleReveal) {
-                    Image(systemName: isRevealed ? "eye.slash" : "eye")
-                        .frame(width: 26, height: 26)
-                }
-                .buttonStyle(.plain)
-                .help(isRevealed ? "隐藏内容" : "显示内容")
-            }
-
-            Button(action: copyValue) {
-                Image(systemName: "doc.on.doc")
-                    .frame(width: 26, height: 26)
-            }
-            .buttonStyle(.plain)
-            .help("复制")
-        }
-        .padding(12)
-        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
         }
     }
 }

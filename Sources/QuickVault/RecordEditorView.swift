@@ -8,7 +8,7 @@ struct RecordEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name: String
     @State private var selectedCategoryID: UUID
-    @State private var fields: [RecordField]
+    @State private var content: String
     @FocusState private var nameIsFocused: Bool
 
     init(store: VaultViewModel, context: RecordEditorContext) {
@@ -22,13 +22,7 @@ struct RecordEditorView: View {
                 ?? store.selectedCategoryID
                 ?? VaultDefaults.personalCategoryID
         )
-
-        let existingFields = existing?.fields.sorted(by: { $0.sortOrder < $1.sortOrder }) ?? []
-        _fields = State(
-            initialValue: existingFields.isEmpty
-                ? [RecordField(label: "", value: "")]
-                : existingFields
-        )
+        _content = State(initialValue: existing?.content ?? "")
     }
 
     private var isEditing: Bool {
@@ -42,10 +36,10 @@ struct RecordEditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(isEditing ? "编辑记录" : "新建记录")
-                        .font(.system(size: 18, weight: .bold))
-                    Text("每个字段都可以单独复制")
+                        .font(.system(size: 19, weight: .bold))
+                    Text("名称用于搜索，内容可以填写任意文本")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -53,63 +47,73 @@ struct RecordEditorView: View {
             }
             .padding(20)
 
-            Divider()
+            Divider().opacity(0.55)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text("记录名称")
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("记录名称")
+                        .font(.system(size: 12, weight: .semibold))
+                    TextField("例如：公司服务器", text: $name)
+                        .textFieldStyle(.plain)
+                        .focused($nameIsFocused)
+                        .padding(.horizontal, 11)
+                        .frame(height: 34)
+                        .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 9))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 9)
+                                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                        }
+                }
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("分类")
+                        .font(.system(size: 12, weight: .semibold))
+                    Picker("分类", selection: $selectedCategoryID) {
+                        ForEach(store.sortedCategories) { category in
+                            Text(category.name).tag(category.id)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 220, alignment: .leading)
+                }
+
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack {
+                        Text("内容")
                             .font(.system(size: 12, weight: .semibold))
-                        TextField("例如：公司服务器", text: $name)
-                            .textFieldStyle(.roundedBorder)
-                            .focused($nameIsFocused)
+                        Spacer()
+                        Text("支持多行文本、网址和账号信息")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
                     }
 
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text("分类")
-                            .font(.system(size: 12, weight: .semibold))
-                        Picker("分类", selection: $selectedCategoryID) {
-                            ForEach(store.sortedCategories) { category in
-                                Text(category.name).tag(category.id)
-                            }
+                    ZStack(alignment: .topLeading) {
+                        if content.isEmpty {
+                            Text("输入任意内容，例如网址、手机号、账号密码或备注")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.tertiary)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 9)
+                                .allowsHitTesting(false)
                         }
-                        .labelsHidden()
-                        .frame(maxWidth: 220, alignment: .leading)
+
+                        TextEditor(text: $content)
+                            .font(.system(size: 13))
+                            .lineSpacing(4)
+                            .scrollContentBackground(.hidden)
+                            .padding(5)
                     }
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("字段")
-                                .font(.system(size: 12, weight: .semibold))
-                            Spacer()
-                            Button {
-                                fields.append(
-                                    RecordField(
-                                        label: "",
-                                        value: "",
-                                        sortOrder: fields.count
-                                    )
-                                )
-                            } label: {
-                                Label("添加字段", systemImage: "plus")
-                            }
-                            .buttonStyle(.link)
-                        }
-
-                        ForEach($fields) { field in
-                            FieldEditorRow(field: field) {
-                                fields.removeAll(where: { $0.id == field.wrappedValue.id })
-                                if fields.isEmpty {
-                                    fields.append(RecordField(label: "", value: ""))
-                                }
-                            }
-                        }
+                    .frame(minHeight: 220)
+                    .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.primary.opacity(0.1), lineWidth: 1)
                     }
                 }
-                .padding(20)
             }
+            .padding(20)
 
-            Divider()
+            Divider().opacity(0.55)
 
             HStack {
                 Spacer()
@@ -123,7 +127,7 @@ struct RecordEditorView: View {
                         id: context.recordID,
                         name: name,
                         categoryID: selectedCategoryID,
-                        fields: fields
+                        content: content
                     )
                     dismiss()
                 }
@@ -133,63 +137,11 @@ struct RecordEditorView: View {
             .padding(16)
         }
         .frame(width: 600, height: 500)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .quickVaultGlass(cornerRadius: 20)
         .onAppear {
             DispatchQueue.main.async {
                 nameIsFocused = true
             }
-        }
-    }
-}
-
-private struct FieldEditorRow: View {
-    @Binding var field: RecordField
-    let delete: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .bottom, spacing: 10) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("字段名称")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
-                    TextField("例如：手机号", text: $field.label)
-                        .textFieldStyle(.roundedBorder)
-                }
-
-                Toggle(isOn: $field.isSensitive) {
-                    Label("敏感字段", systemImage: "eye.slash")
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .toggleStyle(.checkbox)
-                .fixedSize()
-
-                Button(role: .destructive, action: delete) {
-                    Image(systemName: "trash")
-                        .frame(width: 24, height: 24)
-                }
-                .buttonStyle(.plain)
-                .help("删除字段")
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("内容")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                if field.isSensitive {
-                    SecureField("输入敏感内容", text: $field.value)
-                        .textFieldStyle(.roundedBorder)
-                } else {
-                    TextField("输入内容", text: $field.value)
-                        .textFieldStyle(.roundedBorder)
-                }
-            }
-        }
-        .padding(14)
-        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
         }
     }
 }

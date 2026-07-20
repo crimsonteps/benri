@@ -1,8 +1,20 @@
 import AppKit
+import QuickVaultCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let store = VaultViewModel()
+    private let store: VaultViewModel = {
+        let environment = ProcessInfo.processInfo.environment
+        let testFileURL = environment["QUICKVAULT_DATA_FILE"].map {
+            URL(fileURLWithPath: $0)
+        }
+        let keychainService = environment["QUICKVAULT_KEYCHAIN_SERVICE"]
+            ?? "com.crimsonteps.quickvault"
+        return VaultViewModel(
+            vaultFileURL: testFileURL,
+            keyStore: KeychainKeyStore(service: keychainService)
+        )
+    }()
     private var panelController: PanelController!
     private var hotKeyManager: HotKeyManager!
     private var statusItem: NSStatusItem!

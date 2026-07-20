@@ -1,32 +1,10 @@
 import Foundation
 
-public struct RecordField: Codable, Equatable, Identifiable, Sendable {
-    public var id: UUID
-    public var label: String
-    public var value: String
-    public var isSensitive: Bool
-    public var sortOrder: Int
-
-    public init(
-        id: UUID = UUID(),
-        label: String,
-        value: String,
-        isSensitive: Bool = false,
-        sortOrder: Int = 0
-    ) {
-        self.id = id
-        self.label = label
-        self.value = value
-        self.isSensitive = isSensitive
-        self.sortOrder = sortOrder
-    }
-}
-
 public struct VaultRecord: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     public var name: String
     public var categoryID: UUID
-    public var fields: [RecordField]
+    public var content: String
     public var createdAt: Date
     public var updatedAt: Date
 
@@ -34,16 +12,85 @@ public struct VaultRecord: Codable, Equatable, Identifiable, Sendable {
         id: UUID = UUID(),
         name: String,
         categoryID: UUID,
-        fields: [RecordField] = [],
+        content: String = "",
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
         self.id = id
         self.name = name
         self.categoryID = categoryID
-        self.fields = fields
+        self.content = content
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case categoryID
+        case content
+        case fields
+        case createdAt
+        case updatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decode(String.self, forKey: .name)
+        categoryID = try container.decode(UUID.self, forKey: .categoryID)
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? createdAt
+
+        if let currentContent = try container.decodeIfPresent(String.self, forKey: .content) {
+            content = currentContent
+        } else {
+            let legacyFields = try container.decodeIfPresent([LegacyRecordField].self, forKey: .fields) ?? []
+            content = legacyFields
+                .sorted { $0.sortOrder < $1.sortOrder }
+                .compactMap(\.mergedText)
+                .joined(separator: "\n")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(categoryID, forKey: .categoryID)
+        try container.encode(content, forKey: .content)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(updatedAt, forKey: .updatedAt)
+    }
+}
+
+private struct LegacyRecordField: Decodable {
+    var label: String
+    var value: String
+    var sortOrder: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case label
+        case value
+        case sortOrder
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        label = try container.decodeIfPresent(String.self, forKey: .label) ?? ""
+        value = try container.decodeIfPresent(String.self, forKey: .value) ?? ""
+        sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
+    }
+
+    var mergedText: String? {
+        let cleanLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleanLabel.isEmpty {
+            return value.isEmpty ? nil : value
+        }
+        if value.isEmpty {
+            return cleanLabel
+        }
+        return "\(cleanLabel): \(value)"
     }
 }
 
@@ -81,7 +128,7 @@ public enum VaultDefaults {
 }
 
 public struct VaultPayload: Codable, Equatable, Sendable {
-    public static let currentFormatVersion = 1
+    public static let currentFormatVersion = 2
 
     public var formatVersion: Int
     public var categories: [VaultCategory]
@@ -103,6 +150,13 @@ public struct VaultPayload: Codable, Equatable, Sendable {
 
     public func categoryName(for id: UUID) -> String {
         categories.first(where: { $0.id == id })?.name ?? "其他"
+    }
+
+    @discardableResult
+    public mutating func migrateToCurrentFormat() -> Bool {
+        guard formatVersion < VaultPayload.currentFormatVersion else { return false }
+        formatVersion = VaultPayload.currentFormatVersion
+        return true
     }
 
     public func filteredRecords(categoryID: UUID?, query: String) -> [VaultRecord] {

@@ -167,7 +167,7 @@ final class VaultViewModel: ObservableObject {
         id: UUID?,
         name: String,
         categoryID: UUID,
-        fields: [RecordField]
+        content: String
     ) {
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanName.isEmpty else { return }
@@ -175,30 +175,19 @@ final class VaultViewModel: ObservableObject {
         let safeCategoryID = payload.categories.contains(where: { $0.id == categoryID })
             ? categoryID
             : VaultDefaults.otherCategoryID
-        let normalizedFields = fields.enumerated().compactMap { index, field -> RecordField? in
-            let cleanLabel = field.label.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !cleanLabel.isEmpty || !field.value.isEmpty else { return nil }
-            return RecordField(
-                id: field.id,
-                label: cleanLabel.isEmpty ? "字段" : cleanLabel,
-                value: field.value,
-                isSensitive: field.isSensitive,
-                sortOrder: index
-            )
-        }
 
         let recordID: UUID
         if let id, let index = payload.records.firstIndex(where: { $0.id == id }) {
             payload.records[index].name = cleanName
             payload.records[index].categoryID = safeCategoryID
-            payload.records[index].fields = normalizedFields
+            payload.records[index].content = content
             payload.records[index].updatedAt = Date()
             recordID = id
         } else {
             let record = VaultRecord(
                 name: cleanName,
                 categoryID: safeCategoryID,
-                fields: normalizedFields
+                content: content
             )
             payload.records.append(record)
             recordID = record.id
@@ -252,15 +241,13 @@ final class VaultViewModel: ObservableObject {
         persist()
     }
 
-    func copy(_ value: String, sensitive: Bool) {
+    func copy(_ value: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(value, forType: .string)
         showCopyNotice()
 
         clipboardClearWorkItem?.cancel()
-        guard sensitive else { return }
-
         let workItem = DispatchWorkItem {
             if NSPasteboard.general.string(forType: .string) == value {
                 NSPasteboard.general.clearContents()
@@ -317,6 +304,9 @@ final class VaultViewModel: ObservableObject {
 
             if store.exists {
                 payload = try store.load()
+                if payload.migrateToCurrentFormat() {
+                    try store.save(payload)
+                }
             } else {
                 payload = .empty
                 try store.save(payload)
