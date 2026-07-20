@@ -29,17 +29,6 @@ struct VaultPanelView: View {
                 .quickVaultGlass(cornerRadius: 0)
                 .ignoresSafeArea()
         }
-        .overlay(alignment: .bottom) {
-            if let copyNotice = store.copyNotice {
-                Text(copyNotice)
-                    .font(.system(size: 12, weight: .semibold))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
-                    .quickVaultGlass(cornerRadius: 999)
-                    .padding(.bottom, 16)
-                    .transition(.opacity)
-            }
-        }
         .onAppear {
             store.ensureSelection()
         }
@@ -104,15 +93,6 @@ struct VaultPanelView: View {
                 title: Text("重置保险库？"),
                 message: Text("现有加密数据和本机密钥都会被删除，此操作无法撤销。"),
                 primaryButton: .destructive(Text("重置"), action: store.resetVault),
-                secondaryButton: .cancel(Text("取消"))
-            )
-        case let .confirmDeleteRecord(id):
-            return Alert(
-                title: Text("删除记录？"),
-                message: Text("这条记录将从本地保险库中永久删除。"),
-                primaryButton: .destructive(Text("删除")) {
-                    store.deleteRecord(id)
-                },
                 secondaryButton: .cancel(Text("取消"))
             )
         case let .confirmDeleteCategory(id):
@@ -333,6 +313,8 @@ private struct RecordListView: View {
                             ) {
                                 store.keyboardPane = .records
                                 store.selectedRecordID = record.id
+                            } deleteAction: {
+                                store.deleteRecord(record.id)
                             }
                         }
                     }
@@ -407,6 +389,7 @@ private struct RecordRow: View {
     let showsPreview: Bool
     let isSelected: Bool
     let action: () -> Void
+    let deleteAction: () -> Void
 
     private var preview: String {
         let firstLine = record.content
@@ -447,6 +430,9 @@ private struct RecordRow: View {
             }
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button("删除记录", role: .destructive, action: deleteAction)
+        }
     }
 }
 
@@ -480,8 +466,14 @@ private struct RecordDetailView: View {
             if let record = store.selectedRecord {
                 if valueOnly {
                     recordValue(record)
+                        .contextMenu {
+                            deleteRecordButton(record)
+                        }
                 } else {
                     recordDetail(record)
+                        .contextMenu {
+                            deleteRecordButton(record)
+                        }
                 }
             } else {
                 VStack(spacing: 12) {
@@ -506,7 +498,9 @@ private struct RecordDetailView: View {
                     .lineSpacing(6)
                     .foregroundStyle(record.content.isEmpty ? .secondary : .primary)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .textSelection(.enabled)
+                    .contextMenu {
+                        deleteRecordButton(record)
+                    }
                     .padding(24)
                     .padding(.trailing, 36)
             }
@@ -521,15 +515,6 @@ private struct RecordDetailView: View {
             .disabled(record.content.isEmpty)
             .help("复制当前值")
             .padding(16)
-        }
-        .overlay(alignment: .bottomLeading) {
-            Text("← 返回   ↩ 复制")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 5)
-                .background(.thinMaterial, in: Capsule())
-                .padding(16)
         }
     }
 
@@ -550,26 +535,6 @@ private struct RecordDetailView: View {
 
                 Spacer()
 
-                Button {
-                    store.beginEditingSelectedRecord()
-                } label: {
-                    Image(systemName: "square.and.pencil")
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut("e", modifiers: .command)
-                .help("编辑记录 ⌘E")
-
-                Menu {
-                    Button("删除记录", role: .destructive) {
-                        store.requestDeleteRecord(record.id)
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .frame(width: 28, height: 28)
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
             }
             .padding(20)
 
@@ -583,10 +548,6 @@ private struct RecordDetailView: View {
                     Text("这条记录还没有内容")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.secondary)
-                    Button("添加内容") {
-                        store.beginEditingSelectedRecord()
-                    }
-                    .buttonStyle(.link)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -611,7 +572,9 @@ private struct RecordDetailView: View {
                             .font(.system(size: 14))
                             .lineSpacing(5)
                             .frame(maxWidth: .infinity, alignment: .topLeading)
-                            .textSelection(.enabled)
+                            .contextMenu {
+                                deleteRecordButton(record)
+                            }
                     }
                     .padding(16)
                     .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
@@ -622,6 +585,12 @@ private struct RecordDetailView: View {
                     .padding(16)
                 }
             }
+        }
+    }
+
+    private func deleteRecordButton(_ record: VaultRecord) -> some View {
+        Button("删除记录", role: .destructive) {
+            store.deleteRecord(record.id)
         }
     }
 }

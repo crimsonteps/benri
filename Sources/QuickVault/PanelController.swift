@@ -15,7 +15,6 @@ final class QuickVaultPanel: NSPanel {
 final class PanelController: NSObject, NSWindowDelegate {
     private let panel: QuickVaultPanel
     private let store: VaultViewModel
-    private let settings: AppSettings
     private var keyMonitor: Any?
     private var shouldPositionOnNextShow = true
 
@@ -25,7 +24,6 @@ final class PanelController: NSObject, NSWindowDelegate {
         openSettings: @escaping () -> Void
     ) {
         self.store = store
-        self.settings = settings
         self.panel = QuickVaultPanel(
             contentRect: NSRect(x: 0, y: 0, width: 820, height: 520),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -62,7 +60,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self,
                   self.panel.isKeyWindow,
-                  self.panel.attachedSheet == nil
+                  self.panel.attachedSheet == nil,
+                  self.store.alert == nil
             else { return event }
 
             let modifiers = event.modifierFlags
@@ -78,7 +77,7 @@ final class PanelController: NSObject, NSWindowDelegate {
                 case .categories:
                     self.store.moveCategorySelection(-1)
                 case .records:
-                    self.moveRecordSelection(-1)
+                    self.store.moveSelection(-1)
                 case .value:
                     return event
                 }
@@ -89,14 +88,21 @@ final class PanelController: NSObject, NSWindowDelegate {
                 case .categories:
                     self.store.moveCategorySelection(1)
                 case .records:
-                    self.moveRecordSelection(1)
+                    self.store.moveSelection(1)
                 case .value:
                     return event
                 }
                 return nil
             case kVK_LeftArrow:
-                if usesCommand || self.store.searchText.isEmpty {
+                if usesCommand {
                     self.store.moveKeyboardPaneLeft()
+                    return nil
+                }
+                if self.store.searchText.isEmpty,
+                   self.store.selectedRecord != nil,
+                   self.store.keyboardPane != .categories {
+                    self.store.keyboardPane = .value
+                    self.store.beginEditingSelectedRecord()
                     return nil
                 }
                 return event
@@ -107,8 +113,13 @@ final class PanelController: NSObject, NSWindowDelegate {
                 }
                 return event
             case kVK_Return, kVK_ANSI_KeypadEnter:
-                if !usesCommand, self.store.keyboardPane == .value {
-                    self.store.copySelectedRecord()
+                if usesCommand {
+                    self.showSelectedRecordMenu()
+                    return nil
+                }
+                if self.store.keyboardPane != .categories,
+                   self.store.copySelectedRecord() {
+                    self.hide()
                     return nil
                 }
                 return event
@@ -173,11 +184,30 @@ final class PanelController: NSObject, NSWindowDelegate {
         return false
     }
 
-    private func moveRecordSelection(_ direction: Int) {
-        store.moveSelection(direction)
-        if settings.autoCopyOnSelection {
-            store.copySelectedRecord()
-        }
+    @objc private func deleteSelectedRecord() {
+        guard let id = store.selectedRecordID else { return }
+        store.deleteRecord(id)
+    }
+
+    private func showSelectedRecordMenu() {
+        guard store.selectedRecord != nil,
+              let contentView = panel.contentView
+        else { return }
+
+        let menu = NSMenu()
+        let deleteItem = NSMenuItem(
+            title: "删除记录",
+            action: #selector(deleteSelectedRecord),
+            keyEquivalent: ""
+        )
+        deleteItem.target = self
+        menu.addItem(deleteItem)
+
+        let point = NSPoint(
+            x: min(300, contentView.bounds.maxX - 24),
+            y: contentView.bounds.midY
+        )
+        menu.popUp(positioning: deleteItem, at: point, in: contentView)
     }
 
     private func positionPanel() {

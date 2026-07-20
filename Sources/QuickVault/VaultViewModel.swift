@@ -21,7 +21,6 @@ enum KeyboardPane {
 enum VaultAlert: Identifiable, Equatable {
     case saveError(String)
     case confirmReset
-    case confirmDeleteRecord(UUID)
     case confirmDeleteCategory(UUID)
 
     var id: String {
@@ -30,8 +29,6 @@ enum VaultAlert: Identifiable, Equatable {
             return "save-\(message)"
         case .confirmReset:
             return "reset"
-        case let .confirmDeleteRecord(id):
-            return "record-\(id.uuidString)"
         case let .confirmDeleteCategory(id):
             return "category-\(id.uuidString)"
         }
@@ -59,7 +56,6 @@ final class VaultViewModel: ObservableObject {
     @Published var recordEditor: RecordEditorContext?
     @Published var categoryEditor: CategoryEditorContext?
     @Published var alert: VaultAlert?
-    @Published var copyNotice: String?
     @Published var keyboardPane: KeyboardPane = .records
 
     let vaultFileURL: URL
@@ -67,7 +63,6 @@ final class VaultViewModel: ObservableObject {
     private let keyStore: VaultKeyStore
     private var fileStore: VaultFileStore?
     private var clipboardClearWorkItem: DispatchWorkItem?
-    private var copyNoticeWorkItem: DispatchWorkItem?
 
     init(
         vaultFileURL: URL? = nil,
@@ -245,10 +240,6 @@ final class VaultViewModel: ObservableObject {
         persist()
     }
 
-    func requestDeleteRecord(_ id: UUID) {
-        alert = .confirmDeleteRecord(id)
-    }
-
     func deleteRecord(_ id: UUID) {
         payload.records.removeAll(where: { $0.id == id })
         ensureSelection()
@@ -288,19 +279,17 @@ final class VaultViewModel: ObservableObject {
         persist()
     }
 
-    func copySelectedRecord() {
-        guard let record = selectedRecord, !record.content.isEmpty else { return }
-        copy(
-            record.content,
-            notice: "已复制「\(record.name)」· 30 秒后清除"
-        )
+    @discardableResult
+    func copySelectedRecord() -> Bool {
+        guard let record = selectedRecord, !record.content.isEmpty else { return false }
+        copy(record.content)
+        return true
     }
 
-    func copy(_ value: String, notice: String = "已复制") {
+    func copy(_ value: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(value, forType: .string)
-        showCopyNotice(notice)
 
         clipboardClearWorkItem?.cancel()
         let workItem = DispatchWorkItem {
@@ -382,14 +371,4 @@ final class VaultViewModel: ObservableObject {
         }
     }
 
-    private func showCopyNotice(_ message: String) {
-        copyNoticeWorkItem?.cancel()
-        copyNotice = message
-
-        let workItem = DispatchWorkItem { [weak self] in
-            self?.copyNotice = nil
-        }
-        copyNoticeWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4, execute: workItem)
-    }
 }
