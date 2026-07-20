@@ -36,6 +36,7 @@ private func checkModelRoundTrip() throws {
         name: "测试服务器",
         categoryID: VaultDefaults.serverCategoryID,
         content: "账号: deploy\n密码: s3cret",
+        contentType: .bash,
         createdAt: fixedDate,
         updatedAt: fixedDate
     )
@@ -109,12 +110,14 @@ private func checkLegacyMigration() throws {
         payload.records.first?.content == "账号: deploy\n密码: s3cret",
         "旧字段自动合并为正文"
     )
+    runner.expect(payload.records.first?.contentType == .text, "旧记录默认迁移为文本类型")
     runner.expect(payload.migrateToCurrentFormat(), "旧格式版本会执行迁移")
     runner.expect(payload.formatVersion == VaultPayload.currentFormatVersion, "迁移后格式版本正确")
 
     let encoded = try JSONEncoder().encode(payload)
     let encodedText = String(decoding: encoded, as: UTF8.self)
     runner.expect(!encodedText.contains("\"fields\""), "新格式不再保存字段数组")
+    runner.expect(encodedText.contains("\"contentType\""), "新格式保存内容类型")
 }
 
 private func checkCrypto() throws {

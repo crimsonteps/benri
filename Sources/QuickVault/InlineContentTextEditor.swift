@@ -3,6 +3,7 @@ import SwiftUI
 
 struct InlineContentTextEditor: NSViewRepresentable {
     @Binding var text: String
+    let usesMonospacedFont: Bool
     let onFocusChange: (Bool) -> Void
     let onDelete: () -> Void
 
@@ -20,7 +21,7 @@ struct InlineContentTextEditor: NSViewRepresentable {
         let textView = RecordContentTextView()
         textView.delegate = context.coordinator
         textView.string = text
-        textView.font = .systemFont(ofSize: 14)
+        textView.font = editorFont
         textView.textColor = .labelColor
         textView.drawsBackground = false
         textView.isRichText = false
@@ -46,11 +47,20 @@ struct InlineContentTextEditor: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.parent = self
-        guard let textView = scrollView.documentView as? RecordContentTextView,
-              textView.string != text
-        else { return }
+        guard let textView = scrollView.documentView as? RecordContentTextView else { return }
 
-        textView.string = text
+        if textView.string != text {
+            textView.string = text
+        }
+        if textView.font != editorFont {
+            textView.font = editorFont
+        }
+    }
+
+    private var editorFont: NSFont {
+        usesMonospacedFont
+            ? .monospacedSystemFont(ofSize: 14, weight: .regular)
+            : .systemFont(ofSize: 14)
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {

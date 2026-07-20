@@ -116,6 +116,7 @@ private struct SidebarView: View {
                         icon: "square.stack.3d.up.fill",
                         count: store.recordCount(for: nil),
                         isSelected: store.selectedCategoryID == nil,
+                        isKeyboardActive: store.keyboardPane == .categories,
                         isExpanded: isExpanded
                     ) {
                         store.selectCategory(nil)
@@ -127,6 +128,7 @@ private struct SidebarView: View {
                             icon: iconName(for: category),
                             count: store.recordCount(for: category.id),
                             isSelected: store.selectedCategoryID == category.id,
+                            isKeyboardActive: store.keyboardPane == .categories,
                             isExpanded: isExpanded
                         ) {
                             store.selectCategory(category.id)
@@ -242,6 +244,7 @@ private struct SidebarRow: View {
     let icon: String
     let count: Int
     let isSelected: Bool
+    let isKeyboardActive: Bool
     let isExpanded: Bool
     let action: () -> Void
 
@@ -268,7 +271,16 @@ private struct SidebarRow: View {
             .contentShape(Rectangle())
             .background {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
+                    .fill(isSelected ? Color.accentColor.opacity(isKeyboardActive ? 0.18 : 0.1) : Color.clear)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .stroke(
+                                isSelected && isKeyboardActive
+                                    ? Color.accentColor.opacity(0.5)
+                                    : Color.clear,
+                                lineWidth: 1
+                            )
+                    }
             }
         }
         .buttonStyle(.plain)
@@ -300,7 +312,8 @@ private struct RecordListView: View {
                                 categoryName: store.selectedCategoryID == nil
                                     ? store.categoryName(for: record.categoryID)
                                     : nil,
-                                isSelected: store.selectedRecordID == record.id
+                                isSelected: store.selectedRecordID == record.id,
+                                isKeyboardActive: store.keyboardPane == .records
                             ) {
                                 store.keyboardPane = .records
                                 store.selectedRecordID = record.id
@@ -378,6 +391,7 @@ private struct RecordRow: View {
     let record: VaultRecord
     let categoryName: String?
     let isSelected: Bool
+    let isKeyboardActive: Bool
     let action: () -> Void
     let deleteAction: () -> Void
 
@@ -418,7 +432,16 @@ private struct RecordRow: View {
             .contentShape(Rectangle())
             .background {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.19) : Color.clear)
+                    .fill(isSelected ? Color.accentColor.opacity(isKeyboardActive ? 0.17 : 0.09) : Color.clear)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(
+                                isSelected && isKeyboardActive
+                                    ? Color.accentColor.opacity(0.48)
+                                    : Color.clear,
+                                lineWidth: 1
+                            )
+                    }
             }
         }
         .buttonStyle(.plain)
@@ -476,11 +499,10 @@ private struct RecordDetailView: View {
 
     private func recordDetail(_ record: VaultRecord) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 10) {
-                InlineRecordNameEditor(store: store, record: record)
-                    .id(record.id)
-            }
-            .padding(20)
+            InlineRecordNameEditor(store: store, record: record)
+                .id(record.id)
+                .padding(.horizontal, 20)
+                .frame(height: 57)
 
             Divider().opacity(0.45)
 
@@ -550,6 +572,8 @@ private struct InlineRecordContentEditor: View {
     let record: VaultRecord
 
     @State private var content: String
+    @State private var isFocused = false
+    @State private var copied = false
 
     init(store: VaultViewModel, record: VaultRecord) {
         self.store = store
@@ -558,32 +582,105 @@ private struct InlineRecordContentEditor: View {
     }
 
     var body: some View {
-        InlineContentTextEditor(
-            text: $content,
-            onFocusChange: handleFocusChange,
-            onDelete: {
-                store.deleteRecord(record.id)
+        ZStack(alignment: .topTrailing) {
+            InlineContentTextEditor(
+                text: $content,
+                usesMonospacedFont: record.contentType.usesMonospacedFont,
+                onFocusChange: handleFocusChange,
+                onDelete: {
+                    store.deleteRecord(record.id)
+                }
+            )
+                .padding(.top, 42)
+
+            contentToolbar
+                .padding(8)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13)
+                .stroke(
+                    isFocused
+                        ? Color.accentColor.opacity(0.52)
+                        : Color.primary.opacity(0.08),
+                    lineWidth: isFocused ? 1.5 : 1
+                )
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .onChange(of: content) { newValue in
+            store.updateRecordContent(id: record.id, content: newValue)
+        }
+        .onDisappear {
+            store.flushPendingRecordSave()
+        }
+    }
+
+    private var contentToolbar: some View {
+        HStack(spacing: 2) {
+            Menu {
+                ForEach(VaultContentType.allCases) { contentType in
+                    Button {
+                        store.updateRecordContentType(id: record.id, contentType: contentType)
+                    } label: {
+                        if contentType == record.contentType {
+                            Label(contentType.displayName, systemImage: "checkmark")
+                        } else {
+                            Text(contentType.displayName)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Text(record.contentType.displayName)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 9)
+                .frame(height: 28)
             }
-        )
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
-            .overlay {
-                RoundedRectangle(cornerRadius: 13)
-                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+
+            Divider()
+                .frame(height: 18)
+
+            Button(action: copyContent) {
+                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(copied ? AnyShapeStyle(.green) : AnyShapeStyle(.secondary))
+                    .frame(width: 30, height: 28)
             }
-            .padding(16)
-            .onChange(of: content) { newValue in
-                store.updateRecordContent(id: record.id, content: newValue)
-            }
-            .onDisappear {
-                store.flushPendingRecordSave()
-            }
+            .buttonStyle(.plain)
+            .disabled(content.isEmpty)
+            .help("复制内容")
+        }
+        .padding(2)
+        .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 9))
+        .overlay {
+            RoundedRectangle(cornerRadius: 9)
+                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+        }
     }
 
     private func handleFocusChange(_ isFocused: Bool) {
+        self.isFocused = isFocused
         store.keyboardPane = isFocused ? .value : .records
         if !isFocused {
             store.flushPendingRecordSave()
+        }
+    }
+
+    private func copyContent() {
+        guard !content.isEmpty else { return }
+        store.copy(content)
+        copied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            copied = false
         }
     }
 }

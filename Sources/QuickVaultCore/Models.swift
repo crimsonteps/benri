@@ -1,10 +1,52 @@
 import Foundation
 
+public enum VaultContentType: String, CaseIterable, Codable, Identifiable, Sendable {
+    case text
+    case account
+    case password
+    case phone
+    case email
+    case url
+    case bash
+    case json
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .text: return "文本"
+        case .account: return "账号"
+        case .password: return "密码"
+        case .phone: return "手机号"
+        case .email: return "邮箱"
+        case .url: return "网址"
+        case .bash: return "Bash"
+        case .json: return "JSON"
+        }
+    }
+
+    public var usesMonospacedFont: Bool {
+        self == .bash || self == .json
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        self = VaultContentType(rawValue: rawValue) ?? .text
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+}
+
 public struct VaultRecord: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     public var name: String
     public var categoryID: UUID
     public var content: String
+    public var contentType: VaultContentType
     public var createdAt: Date
     public var updatedAt: Date
 
@@ -13,6 +55,7 @@ public struct VaultRecord: Codable, Equatable, Identifiable, Sendable {
         name: String,
         categoryID: UUID,
         content: String = "",
+        contentType: VaultContentType = .text,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -20,6 +63,7 @@ public struct VaultRecord: Codable, Equatable, Identifiable, Sendable {
         self.name = name
         self.categoryID = categoryID
         self.content = content
+        self.contentType = contentType
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -29,6 +73,7 @@ public struct VaultRecord: Codable, Equatable, Identifiable, Sendable {
         case name
         case categoryID
         case content
+        case contentType
         case fields
         case createdAt
         case updatedAt
@@ -41,6 +86,7 @@ public struct VaultRecord: Codable, Equatable, Identifiable, Sendable {
         categoryID = try container.decode(UUID.self, forKey: .categoryID)
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? createdAt
+        contentType = try container.decodeIfPresent(VaultContentType.self, forKey: .contentType) ?? .text
 
         if let currentContent = try container.decodeIfPresent(String.self, forKey: .content) {
             content = currentContent
@@ -59,6 +105,7 @@ public struct VaultRecord: Codable, Equatable, Identifiable, Sendable {
         try container.encode(name, forKey: .name)
         try container.encode(categoryID, forKey: .categoryID)
         try container.encode(content, forKey: .content)
+        try container.encode(contentType, forKey: .contentType)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
     }
@@ -128,7 +175,7 @@ public enum VaultDefaults {
 }
 
 public struct VaultPayload: Codable, Equatable, Sendable {
-    public static let currentFormatVersion = 2
+    public static let currentFormatVersion = 3
 
     public var formatVersion: Int
     public var categories: [VaultCategory]
