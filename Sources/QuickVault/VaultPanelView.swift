@@ -62,10 +62,7 @@ struct VaultPanelView: View {
 
             Divider().opacity(0.45)
 
-            RecordListView(
-                store: store,
-                hidePreviews: settings.hideRecordPreviews
-            )
+            RecordListView(store: store)
                 .frame(width: 264)
                 .keyboardPaneFocus(store.keyboardPane == .records)
 
@@ -284,7 +281,6 @@ private struct SidebarRow: View {
 
 private struct RecordListView: View {
     @ObservedObject var store: VaultViewModel
-    let hidePreviews: Bool
     @FocusState private var searchIsFocused: Bool
 
     var body: some View {
@@ -304,8 +300,9 @@ private struct RecordListView: View {
                         ForEach(store.filteredRecords) { record in
                             RecordRow(
                                 record: record,
-                                categoryName: store.categoryName(for: record.categoryID),
-                                showsPreview: !hidePreviews,
+                                categoryName: store.selectedCategoryID == nil
+                                    ? store.categoryName(for: record.categoryID)
+                                    : nil,
                                 isSelected: store.selectedRecordID == record.id
                             ) {
                                 store.keyboardPane = .records
@@ -382,8 +379,7 @@ private struct RecordListView: View {
 
 private struct RecordRow: View {
     let record: VaultRecord
-    let categoryName: String
-    let showsPreview: Bool
+    let categoryName: String?
     let isSelected: Bool
     let action: () -> Void
     let deleteAction: () -> Void
@@ -404,17 +400,19 @@ private struct RecordRow: View {
                     .lineLimit(1)
 
                 HStack(spacing: 7) {
-                    Text(categoryName)
-                        .font(.system(size: 10, weight: .semibold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 5))
-                    if showsPreview {
-                        Text(preview)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                    if let categoryName {
+                        Text(categoryName)
+                            .font(.system(size: 10, weight: .semibold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 5))
                     }
+
+                    Text(preview)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

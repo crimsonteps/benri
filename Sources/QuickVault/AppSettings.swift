@@ -37,7 +37,6 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 final class AppSettings: ObservableObject {
     private static let appearanceDefaultsKey = "appearanceMode"
     private static let hotKeyDefaultsKey = "globalHotKey"
-    private static let hidePreviewsDefaultsKey = "hideRecordPreviews"
 
     @Published var appearanceMode: AppearanceMode {
         didSet {
@@ -56,17 +55,8 @@ final class AppSettings: ObservableObject {
         }
     }
     @Published var hotKeyError: String?
-    @Published var hideRecordPreviews: Bool {
-        didSet {
-            UserDefaults.standard.set(
-                hideRecordPreviews,
-                forKey: Self.hidePreviewsDefaultsKey
-            )
-        }
-    }
 
     init() {
-        let defaults = UserDefaults.standard
         appearanceMode = UserDefaults.standard
             .string(forKey: Self.appearanceDefaultsKey)
             .flatMap(AppearanceMode.init(rawValue:))
@@ -75,6 +65,5 @@ final class AppSettings: ObservableObject {
             .string(forKey: Self.hotKeyDefaultsKey)
             .flatMap(GlobalHotKey.init(rawValue:))
             ?? .optionSpace
-        hideRecordPreviews = defaults.object(forKey: Self.hidePreviewsDefaultsKey) as? Bool ?? true
     }
 }
