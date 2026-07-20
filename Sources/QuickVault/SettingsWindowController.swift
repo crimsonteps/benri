@@ -21,6 +21,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.delegate = self
         window.title = "valuet 设置"
         window.isReleasedWhenClosed = false
+        window.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.center()
         window.contentView = NSHostingView(
             rootView: SettingsView(
@@ -36,5 +38,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
         window.center()
         window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+        window.makeKey()
     }
 }

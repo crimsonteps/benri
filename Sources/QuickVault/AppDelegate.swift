@@ -87,6 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettings() {
+        panelController.hide()
         settingsWindowController.show()
     }
 
