@@ -103,13 +103,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let button = statusItem.button {
             button.image = NSImage(
                 systemSymbolName: "lock.square.stack",
-                accessibilityDescription: "QuickVault"
+                accessibilityDescription: "valuet"
             )
-            button.toolTip = "QuickVault"
+            button.toolTip = "valuet"
         }
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "打开 QuickVault", action: #selector(openPanel), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "打开 valuet", action: #selector(openPanel), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "新建记录", action: #selector(newRecord), keyEquivalent: "n"))
         menu.addItem(.separator())
         menu.addItem(makeHotKeyMenuItem())
@@ -124,7 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "设置…", action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(NSMenuItem(title: "打开数据目录", action: #selector(openDataFolder), keyEquivalent: ""))
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "退出 QuickVault", action: #selector(quit), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "退出 valuet", action: #selector(quit), keyEquivalent: "q"))
 
         for item in menu.items {
             item.target = self
@@ -170,7 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for (hotKey, item) in hotKeyMenuItems {
             item.state = hotKey == selected ? .on : .off
         }
-        statusItem.button?.toolTip = "QuickVault · \(selected.title)"
+        statusItem.button?.toolTip = "valuet · \(selected.title)"
     }
 
     private func showHotKeyFailure(_ hotKey: GlobalHotKey) {
@@ -182,7 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let mainMenu = NSMenu()
 
         let appItem = NSMenuItem()
-        let appMenu = NSMenu(title: "QuickVault")
+        let appMenu = NSMenu(title: "valuet")
         appMenu.addItem(
             withTitle: "设置…",
             action: #selector(openSettings),
@@ -190,7 +190,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ).target = self
         appMenu.addItem(.separator())
         appMenu.addItem(
-            withTitle: "退出 QuickVault",
+            withTitle: "退出 valuet",
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
         )

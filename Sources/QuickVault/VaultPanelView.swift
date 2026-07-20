@@ -206,7 +206,7 @@ private struct SidebarView: View {
             .help(isExpanded ? "折叠分类栏" : "展开分类栏")
 
             if isExpanded {
-                Text("QuickVault")
+                Text("valuet")
                     .font(.system(size: 15, weight: .semibold))
                     .lineLimit(1)
                 Spacer(minLength: 0)

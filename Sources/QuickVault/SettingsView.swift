@@ -8,7 +8,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Label("外观", systemImage: "circle.lefthalf.filled")
                     .font(.system(size: 18, weight: .semibold))
-                Text("选择 QuickVault 的显示方式")
+                Text("选择 valuet 的显示方式")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }

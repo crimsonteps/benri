@@ -10,7 +10,7 @@ app:
 	./Scripts/package-app.sh
 
 run: app
-	open dist/QuickVault.app
+	open dist/valuet.app
 
 clean:
 	swift package clean

@@ -16,7 +16,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         super.init()
 
         window.delegate = self
-        window.title = "QuickVault 设置"
+        window.title = "valuet 设置"
         window.isReleasedWhenClosed = false
         window.center()
         window.contentView = NSHostingView(rootView: SettingsView(settings: settings))

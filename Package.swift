@@ -3,13 +3,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "QuickVault",
+    name: "valuet",
     platforms: [
         .macOS(.v13)
     ],
     products: [
         .library(name: "QuickVaultCore", targets: ["QuickVaultCore"]),
-        .executable(name: "QuickVault", targets: ["QuickVault"]),
+        .executable(name: "valuet", targets: ["QuickVault"]),
         .executable(name: "QuickVaultChecks", targets: ["QuickVaultChecks"])
     ],
     targets: [

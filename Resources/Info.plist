@@ -5,17 +5,17 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>zh_CN</string>
     <key>CFBundleDisplayName</key>
-    <string>QuickVault</string>
+    <string>valuet</string>
     <key>CFBundleExecutable</key>
-    <string>QuickVault</string>
+    <string>valuet</string>
     <key>CFBundleIconFile</key>
-    <string>QuickVault</string>
+    <string>valuet</string>
     <key>CFBundleIdentifier</key>
     <string>com.crimsonteps.quickvault</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>QuickVault</string>
+    <string>valuet</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
