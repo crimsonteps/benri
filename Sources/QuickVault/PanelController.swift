@@ -14,12 +14,13 @@ final class QuickVaultPanel: NSPanel {
 final class PanelController: NSObject, NSWindowDelegate {
     private let panel: QuickVaultPanel
     private let store: VaultViewModel
+    private var isMiniaturizing = false
 
-    init(store: VaultViewModel) {
+    init(store: VaultViewModel, settings: AppSettings) {
         self.store = store
         self.panel = QuickVaultPanel(
             contentRect: NSRect(x: 0, y: 0, width: 820, height: 520),
-            styleMask: [.titled, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -29,18 +30,17 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.delegate = self
         panel.isReleasedWhenClosed = false
         panel.level = .floating
-        panel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenPrimary]
+        panel.title = "QuickVault"
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
-        panel.isMovableByWindowBackground = true
-        panel.backgroundColor = .clear
-        panel.isOpaque = false
+        panel.isMovableByWindowBackground = false
+        panel.backgroundColor = .windowBackgroundColor
+        panel.isOpaque = true
         panel.hasShadow = true
-        panel.standardWindowButton(.closeButton)?.isHidden = true
-        panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        panel.standardWindowButton(.zoomButton)?.isHidden = true
+        panel.contentMinSize = NSSize(width: 820, height: 520)
 
-        let rootView = VaultPanelView(store: store) { [weak self] in
+        let rootView = VaultPanelView(store: store, settings: settings) { [weak self] in
             self?.hide()
         }
         panel.contentView = NSHostingView(rootView: rootView)
@@ -51,11 +51,18 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func toggle() {
-        panel.isVisible ? hide() : show()
+        if panel.isVisible && !panel.isMiniaturized {
+            hide()
+        } else {
+            show()
+        }
     }
 
     func show() {
         positionPanel()
+        if panel.isMiniaturized {
+            panel.deminiaturize(nil)
+        }
         NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
@@ -83,9 +90,25 @@ final class PanelController: NSObject, NSWindowDelegate {
         if CommandLine.arguments.contains("--show") {
             return
         }
+        if isMiniaturizing || panel.isMiniaturized {
+            return
+        }
         if panel.attachedSheet == nil {
             hide()
         }
+    }
+
+    func windowWillMiniaturize(_ notification: Notification) {
+        isMiniaturizing = true
+    }
+
+    func windowDidMiniaturize(_ notification: Notification) {
+        isMiniaturizing = false
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        hide()
+        return false
     }
 
     private func positionPanel() {

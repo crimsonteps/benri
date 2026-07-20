@@ -1,8 +1,10 @@
 import AppKit
+import Combine
 import QuickVaultCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let settings = AppSettings()
     private let store: VaultViewModel = {
         let environment = ProcessInfo.processInfo.environment
         let applicationSupport = FileManager.default.urls(
@@ -29,15 +31,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panelController: PanelController!
     private var hotKeyManager: HotKeyManager!
     private var statusItem: NSStatusItem!
+    private var settingsWindowController: SettingsWindowController!
     private var hotKeyMenuItems: [GlobalHotKey: NSMenuItem] = [:]
     private var hotKeyFailureItem: NSMenuItem?
+    private var cancellables = Set<AnyCancellable>()
 
     private static let hotKeyDefaultsKey = "globalHotKey"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        configureAppearance()
         configureMainMenu()
-        panelController = PanelController(store: store)
+        panelController = PanelController(store: store, settings: settings)
+        settingsWindowController = SettingsWindowController(settings: settings)
         configureStatusItem()
 
         hotKeyManager = HotKeyManager { [weak self] in
@@ -46,7 +52,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         registerSavedHotKey()
 
-        if CommandLine.arguments.contains("--show") {
+        if CommandLine.arguments.contains("--show")
+            || ProcessInfo.processInfo.environment["QUICKVAULT_SHOW_ON_LAUNCH"] == "1" {
             DispatchQueue.main.async { [weak self] in
                 self?.panelController.show()
             }
@@ -63,6 +70,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openDataFolder() {
         store.openDataFolder()
+    }
+
+    @objc private func openSettings() {
+        settingsWindowController.show()
     }
 
     @objc private func quit() {
@@ -110,6 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotKeyFailureItem = failureItem
 
         menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "设置…", action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(NSMenuItem(title: "打开数据目录", action: #selector(openDataFolder), keyEquivalent: ""))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "退出 QuickVault", action: #selector(quit), keyEquivalent: "q"))
@@ -172,6 +184,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appItem = NSMenuItem()
         let appMenu = NSMenu(title: "QuickVault")
         appMenu.addItem(
+            withTitle: "设置…",
+            action: #selector(openSettings),
+            keyEquivalent: ","
+        ).target = self
+        appMenu.addItem(.separator())
+        appMenu.addItem(
             withTitle: "退出 QuickVault",
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
@@ -199,6 +217,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mainMenu.addItem(editItem)
 
         NSApp.mainMenu = mainMenu
+    }
+
+    private func configureAppearance() {
+        NSApp.appearance = settings.appearanceMode.appearance
+        settings.$appearanceMode
+            .removeDuplicates()
+            .sink { mode in
+                NSApp.appearance = mode.appearance
+            }
+            .store(in: &cancellables)
     }
 
 }

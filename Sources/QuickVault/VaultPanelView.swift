@@ -4,6 +4,7 @@ import SwiftUI
 
 struct VaultPanelView: View {
     @ObservedObject var store: VaultViewModel
+    @ObservedObject var settings: AppSettings
     let onClose: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -21,13 +22,8 @@ struct VaultPanelView: View {
                 mainContent
             }
         }
-        .frame(width: 820, height: 520)
-        .quickVaultGlass(cornerRadius: 18)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.primary.opacity(0.11), lineWidth: 1)
-        }
+        .frame(minWidth: 820, minHeight: 520)
+        .quickVaultGlass(cornerRadius: 0)
         .overlay(alignment: .bottom) {
             if let copyNotice = store.copyNotice {
                 Text(copyNotice)
@@ -62,6 +58,7 @@ struct VaultPanelView: View {
         .alert(item: $store.alert) { alert in
             makeAlert(alert)
         }
+        .preferredColorScheme(settings.appearanceMode.colorScheme)
     }
 
     private var mainContent: some View {
