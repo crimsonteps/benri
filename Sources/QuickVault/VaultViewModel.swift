@@ -263,16 +263,6 @@ final class VaultViewModel: ObservableObject {
         scheduleRecordSave()
     }
 
-    func updateRecordContentType(id: UUID, contentType: VaultContentType) {
-        guard let index = payload.records.firstIndex(where: { $0.id == id }),
-              payload.records[index].contentType != contentType
-        else { return }
-
-        payload.records[index].contentType = contentType
-        payload.records[index].updatedAt = Date()
-        scheduleRecordSave()
-    }
-
     func flushPendingRecordSave() {
         guard recordSaveWorkItem != nil else { return }
         recordSaveWorkItem?.cancel()

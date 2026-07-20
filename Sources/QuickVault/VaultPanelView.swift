@@ -573,7 +573,6 @@ private struct InlineRecordContentEditor: View {
 
     @State private var content: String
     @State private var isFocused = false
-    @State private var copied = false
 
     init(store: VaultViewModel, record: VaultRecord) {
         self.store = store
@@ -582,20 +581,13 @@ private struct InlineRecordContentEditor: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            InlineContentTextEditor(
-                text: $content,
-                usesMonospacedFont: record.contentType.usesMonospacedFont,
-                onFocusChange: handleFocusChange,
-                onDelete: {
-                    store.deleteRecord(record.id)
-                }
-            )
-                .padding(.top, 42)
-
-            contentToolbar
-                .padding(8)
-        }
+        InlineContentTextEditor(
+            text: $content,
+            onFocusChange: handleFocusChange,
+            onDelete: {
+                store.deleteRecord(record.id)
+            }
+        )
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
         .overlay {
@@ -617,70 +609,11 @@ private struct InlineRecordContentEditor: View {
         }
     }
 
-    private var contentToolbar: some View {
-        HStack(spacing: 2) {
-            Menu {
-                ForEach(VaultContentType.allCases) { contentType in
-                    Button {
-                        store.updateRecordContentType(id: record.id, contentType: contentType)
-                    } label: {
-                        if contentType == record.contentType {
-                            Label(contentType.displayName, systemImage: "checkmark")
-                        } else {
-                            Text(contentType.displayName)
-                        }
-                    }
-                }
-            } label: {
-                HStack(spacing: 5) {
-                    Text(record.contentType.displayName)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
-                }
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 9)
-                .frame(height: 28)
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-
-            Divider()
-                .frame(height: 18)
-
-            Button(action: copyContent) {
-                Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(copied ? AnyShapeStyle(.green) : AnyShapeStyle(.secondary))
-                    .frame(width: 30, height: 28)
-            }
-            .buttonStyle(.plain)
-            .disabled(content.isEmpty)
-            .help("复制内容")
-        }
-        .padding(2)
-        .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 9))
-        .overlay {
-            RoundedRectangle(cornerRadius: 9)
-                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
-        }
-    }
-
     private func handleFocusChange(_ isFocused: Bool) {
         self.isFocused = isFocused
         store.keyboardPane = isFocused ? .value : .records
         if !isFocused {
             store.flushPendingRecordSave()
-        }
-    }
-
-    private func copyContent() {
-        guard !content.isEmpty else { return }
-        store.copy(content)
-        copied = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-            copied = false
         }
     }
 }

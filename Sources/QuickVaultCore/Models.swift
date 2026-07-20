@@ -1,6 +1,6 @@
 import Foundation
 
-public enum VaultContentType: String, CaseIterable, Codable, Identifiable, Sendable {
+public enum VaultContentType: String, Codable, Sendable {
     case text
     case account
     case password
@@ -9,25 +9,6 @@ public enum VaultContentType: String, CaseIterable, Codable, Identifiable, Senda
     case url
     case bash
     case json
-
-    public var id: String { rawValue }
-
-    public var displayName: String {
-        switch self {
-        case .text: return "文本"
-        case .account: return "账号"
-        case .password: return "密码"
-        case .phone: return "手机号"
-        case .email: return "邮箱"
-        case .url: return "网址"
-        case .bash: return "Bash"
-        case .json: return "JSON"
-        }
-    }
-
-    public var usesMonospacedFont: Bool {
-        self == .bash || self == .json
-    }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
