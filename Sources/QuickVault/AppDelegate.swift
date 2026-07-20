@@ -66,6 +66,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.flushPendingRecordSave()
     }
 
+    func applicationDidResignActive(_ notification: Notification) {
+        panelController.hide()
+    }
+
     func applicationShouldHandleReopen(
         _ sender: NSApplication,
         hasVisibleWindows flag: Bool
@@ -87,7 +91,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettings() {
-        panelController.hide()
         settingsWindowController.show()
     }
 

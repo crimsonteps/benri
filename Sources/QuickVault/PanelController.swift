@@ -186,18 +186,6 @@ final class PanelController: NSObject, NSWindowDelegate {
         return false
     }
 
-    func windowDidResignKey(_ notification: Notification) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self,
-                  self.panel.isVisible,
-                  self.panel.attachedSheet == nil,
-                  self.store.alert == nil
-            else { return }
-
-            self.hide()
-        }
-    }
-
     private func positionPanel() {
         let mouseLocation = NSEvent.mouseLocation
         let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) })

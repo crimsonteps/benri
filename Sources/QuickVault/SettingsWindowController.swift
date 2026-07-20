@@ -21,7 +21,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.delegate = self
         window.title = "valuet 设置"
         window.isReleasedWhenClosed = false
-        window.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
+        window.level = .modalPanel
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.center()
         window.contentView = NSHostingView(
