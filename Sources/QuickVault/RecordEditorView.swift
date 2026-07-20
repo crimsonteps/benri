@@ -45,11 +45,11 @@ struct RecordEditorView: View {
                 }
                 Spacer()
             }
-            .padding(20)
+            .padding(16)
 
             Divider().opacity(0.55)
 
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 7) {
                     Text("记录名称")
                         .font(.system(size: 12, weight: .semibold))
@@ -103,7 +103,7 @@ struct RecordEditorView: View {
                             .scrollContentBackground(.hidden)
                             .padding(5)
                     }
-                    .frame(minHeight: 220)
+                    .frame(minHeight: 140, maxHeight: .infinity)
                     .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
                     .overlay {
                         RoundedRectangle(cornerRadius: 12)
@@ -111,7 +111,8 @@ struct RecordEditorView: View {
                     }
                 }
             }
-            .padding(20)
+            .padding(16)
+            .frame(maxHeight: .infinity)
 
             Divider().opacity(0.55)
 
@@ -134,9 +135,9 @@ struct RecordEditorView: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canSave)
             }
-            .padding(16)
+            .padding(12)
         }
-        .frame(width: 600, height: 500)
+        .frame(width: 600, height: 460)
         .quickVaultGlass(cornerRadius: 20)
         .onAppear {
             DispatchQueue.main.async {

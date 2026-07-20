@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        configureMainMenu()
         panelController = PanelController(store: store)
         configureStatusItem()
 
@@ -77,6 +78,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.target = self
         }
         statusItem.menu = menu
+    }
+
+    private func configureMainMenu() {
+        let mainMenu = NSMenu()
+
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu(title: "QuickVault")
+        appMenu.addItem(
+            withTitle: "退出 QuickVault",
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        )
+        appItem.submenu = appMenu
+        mainMenu.addItem(appItem)
+
+        let editItem = NSMenuItem()
+        let editMenu = NSMenu(title: "编辑")
+        editMenu.addItem(withTitle: "撤销", action: Selector(("undo:")), keyEquivalent: "z")
+
+        let redoItem = editMenu.addItem(
+            withTitle: "重做",
+            action: Selector(("redo:")),
+            keyEquivalent: "z"
+        )
+        redoItem.keyEquivalentModifierMask = [.command, .shift]
+
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "剪切", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "复制", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "粘贴", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = editMenu
+        mainMenu.addItem(editItem)
+
+        NSApp.mainMenu = mainMenu
     }
 
     private func addHotKeyFailureItem() {
