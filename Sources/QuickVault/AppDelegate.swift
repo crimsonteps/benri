@@ -36,14 +36,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKeyFailureItem: NSMenuItem?
     private var cancellables = Set<AnyCancellable>()
 
-    private static let hotKeyDefaultsKey = "globalHotKey"
-
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         configureAppearance()
         configureMainMenu()
-        panelController = PanelController(store: store, settings: settings)
-        settingsWindowController = SettingsWindowController(settings: settings)
+        panelController = PanelController(
+            store: store,
+            settings: settings,
+            openSettings: { [weak self] in self?.openSettings() }
+        )
+        settingsWindowController = SettingsWindowController(
+            settings: settings,
+            selectHotKey: { [weak self] hotKey in self?.applyHotKey(hotKey) }
+        )
         configureStatusItem()
 
         hotKeyManager = HotKeyManager { [weak self] in
@@ -52,12 +57,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         registerSavedHotKey()
 
-        if CommandLine.arguments.contains("--show")
-            || ProcessInfo.processInfo.environment["QUICKVAULT_SHOW_ON_LAUNCH"] == "1" {
-            DispatchQueue.main.async { [weak self] in
-                self?.panelController.show()
-            }
+        DispatchQueue.main.async { [weak self] in
+            self?.panelController.show()
         }
+    }
+
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows flag: Bool
+    ) -> Bool {
+        panelController.show()
+        return true
     }
 
     @objc private func openPanel() {
@@ -86,16 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let hotKey = GlobalHotKey(rawValue: rawValue)
         else { return }
 
-        let currentHotKey = savedHotKey
-        guard hotKey != currentHotKey else { return }
-
-        if hotKeyManager.register(hotKey) {
-            UserDefaults.standard.set(hotKey.rawValue, forKey: Self.hotKeyDefaultsKey)
-            updateHotKeyMenu(selected: hotKey)
-            hotKeyFailureItem?.isHidden = true
-        } else {
-            showHotKeyFailure(hotKey)
-        }
+        applyHotKey(hotKey)
     }
 
     private func configureStatusItem() {
@@ -152,16 +153,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
-    private var savedHotKey: GlobalHotKey {
-        UserDefaults.standard.string(forKey: Self.hotKeyDefaultsKey)
-            .flatMap(GlobalHotKey.init(rawValue:))
-            ?? .optionSpace
-    }
-
     private func registerSavedHotKey() {
-        let hotKey = savedHotKey
+        let hotKey = settings.globalHotKey
         updateHotKeyMenu(selected: hotKey)
         if !hotKeyManager.register(hotKey) {
+            showHotKeyFailure(hotKey)
+        }
+    }
+
+    private func applyHotKey(_ hotKey: GlobalHotKey) {
+        guard hotKey != settings.globalHotKey else { return }
+
+        if hotKeyManager.register(hotKey) {
+            settings.globalHotKey = hotKey
+            settings.hotKeyError = nil
+            updateHotKeyMenu(selected: hotKey)
+            hotKeyFailureItem?.isHidden = true
+        } else {
             showHotKeyFailure(hotKey)
         }
     }
@@ -174,7 +182,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showHotKeyFailure(_ hotKey: GlobalHotKey) {
-        hotKeyFailureItem?.title = "\(hotKey.title) 已被其他应用占用"
+        let message = "\(hotKey.title) 已被其他应用占用"
+        settings.hotKeyError = message
+        hotKeyFailureItem?.title = message
         hotKeyFailureItem?.isHidden = false
     }
 

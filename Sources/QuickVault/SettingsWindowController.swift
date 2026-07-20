@@ -5,9 +5,12 @@ import SwiftUI
 final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let window: NSWindow
 
-    init(settings: AppSettings) {
+    init(
+        settings: AppSettings,
+        selectHotKey: @escaping (GlobalHotKey) -> Void
+    ) {
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 430, height: 230),
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 400),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -19,7 +22,12 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.title = "valuet 设置"
         window.isReleasedWhenClosed = false
         window.center()
-        window.contentView = NSHostingView(rootView: SettingsView(settings: settings))
+        window.contentView = NSHostingView(
+            rootView: SettingsView(
+                settings: settings,
+                selectHotKey: selectHotKey
+            )
+        )
     }
 
     func show() {

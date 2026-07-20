@@ -5,6 +5,7 @@ import SwiftUI
 struct VaultPanelView: View {
     @ObservedObject var store: VaultViewModel
     @ObservedObject var settings: AppSettings
+    let openSettings: () -> Void
     let onClose: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -42,16 +43,6 @@ struct VaultPanelView: View {
         .onAppear {
             store.ensureSelection()
         }
-        .onMoveCommand { direction in
-            switch direction {
-            case .up:
-                store.moveSelection(-1)
-            case .down:
-                store.moveSelection(1)
-            default:
-                break
-            }
-        }
         .onExitCommand(perform: onClose)
         .sheet(item: $store.recordEditor) { context in
             RecordEditorView(store: store, context: context)
@@ -74,7 +65,8 @@ struct VaultPanelView: View {
                     withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
                         sidebarExpanded.toggle()
                     }
-                }
+                },
+                openSettings: openSettings
             )
             .frame(width: sidebarExpanded ? 156 : 56)
 
@@ -131,6 +123,7 @@ private struct SidebarView: View {
     @ObservedObject var store: VaultViewModel
     let isExpanded: Bool
     let toggleExpanded: () -> Void
+    let openSettings: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -175,26 +168,64 @@ private struct SidebarView: View {
 
             Spacer(minLength: 8)
 
-            Button(action: store.beginNewCategory) {
-                Group {
-                    if isExpanded {
-                        Label("新建分类", systemImage: "plus")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        Image(systemName: "plus")
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-                .font(.system(size: 12, weight: .medium))
-                .padding(.horizontal, isExpanded ? 10 : 0)
-                .frame(height: 34)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .padding(7)
-            .help("新建分类")
+            bottomActions
         }
         .background(Color.primary.opacity(0.025))
+    }
+
+    @ViewBuilder
+    private var bottomActions: some View {
+        Group {
+            if isExpanded {
+                HStack(spacing: 3) {
+                    newCategoryButton(showLabel: true)
+                    deleteCategoryButton
+                    settingsButton
+                }
+            } else {
+                VStack(spacing: 2) {
+                    newCategoryButton(showLabel: false)
+                    deleteCategoryButton
+                    settingsButton
+                }
+            }
+        }
+        .font(.system(size: 12, weight: .medium))
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .padding(7)
+    }
+
+    private func newCategoryButton(showLabel: Bool) -> some View {
+        Button(action: store.beginNewCategory) {
+            Group {
+                if showLabel {
+                    Label("新建", systemImage: "plus")
+                } else {
+                    Image(systemName: "plus")
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 30)
+        }
+        .help("新建分类")
+    }
+
+    private var deleteCategoryButton: some View {
+        Button(role: .destructive, action: store.requestDeleteSelectedCategory) {
+            Image(systemName: "trash")
+                .frame(width: 28, height: 30)
+        }
+        .disabled(!store.canDeleteSelectedCategory)
+        .help("删除当前分类")
+    }
+
+    private var settingsButton: some View {
+        Button(action: openSettings) {
+            Image(systemName: "gearshape")
+                .frame(width: 28, height: 30)
+        }
+        .help("设置 ⌘,")
     }
 
     private var header: some View {

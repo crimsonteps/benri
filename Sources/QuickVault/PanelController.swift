@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import SwiftUI
 
 extension Notification.Name {
@@ -15,8 +16,13 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let panel: QuickVaultPanel
     private let store: VaultViewModel
     private var isMiniaturizing = false
+    private var keyMonitor: Any?
 
-    init(store: VaultViewModel, settings: AppSettings) {
+    init(
+        store: VaultViewModel,
+        settings: AppSettings,
+        openSettings: @escaping () -> Void
+    ) {
         self.store = store
         self.panel = QuickVaultPanel(
             contentRect: NSRect(x: 0, y: 0, width: 820, height: 520),
@@ -41,10 +47,38 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.hasShadow = true
         panel.contentMinSize = NSSize(width: 820, height: 520)
 
-        let rootView = VaultPanelView(store: store, settings: settings) { [weak self] in
-            self?.hide()
-        }
+        let rootView = VaultPanelView(
+            store: store,
+            settings: settings,
+            openSettings: openSettings,
+            onClose: { [weak self] in self?.hide() }
+        )
         panel.contentView = NSHostingView(rootView: rootView)
+
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self,
+                  self.panel.isKeyWindow,
+                  self.panel.attachedSheet == nil,
+                  event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
+            else { return event }
+
+            switch Int(event.keyCode) {
+            case kVK_UpArrow:
+                self.store.moveSelectionAndCopy(-1)
+                return nil
+            case kVK_DownArrow:
+                self.store.moveSelectionAndCopy(1)
+                return nil
+            default:
+                return event
+            }
+        }
+    }
+
+    deinit {
+        if let keyMonitor {
+            NSEvent.removeMonitor(keyMonitor)
+        }
     }
 
     var isVisible: Bool {

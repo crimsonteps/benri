@@ -36,6 +36,7 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 @MainActor
 final class AppSettings: ObservableObject {
     private static let appearanceDefaultsKey = "appearanceMode"
+    private static let hotKeyDefaultsKey = "globalHotKey"
 
     @Published var appearanceMode: AppearanceMode {
         didSet {
@@ -45,11 +46,24 @@ final class AppSettings: ObservableObject {
             )
         }
     }
+    @Published var globalHotKey: GlobalHotKey {
+        didSet {
+            UserDefaults.standard.set(
+                globalHotKey.rawValue,
+                forKey: Self.hotKeyDefaultsKey
+            )
+        }
+    }
+    @Published var hotKeyError: String?
 
     init() {
         appearanceMode = UserDefaults.standard
             .string(forKey: Self.appearanceDefaultsKey)
             .flatMap(AppearanceMode.init(rawValue:))
             ?? .system
+        globalHotKey = UserDefaults.standard
+            .string(forKey: Self.hotKeyDefaultsKey)
+            .flatMap(GlobalHotKey.init(rawValue:))
+            ?? .optionSpace
     }
 }

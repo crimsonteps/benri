@@ -150,6 +150,12 @@ final class VaultViewModel: ObservableObject {
         self.selectedRecordID = records[nextIndex].id
     }
 
+    func moveSelectionAndCopy(_ direction: Int) {
+        moveSelection(direction)
+        guard let content = selectedRecord?.content, !content.isEmpty else { return }
+        copy(content)
+    }
+
     func beginNewRecord() {
         recordEditor = RecordEditorContext(recordID: nil)
     }
@@ -235,6 +241,18 @@ final class VaultViewModel: ObservableObject {
     func requestDeleteCategory(_ id: UUID) {
         guard let category = category(id: id), !category.isBuiltIn else { return }
         alert = .confirmDeleteCategory(id)
+    }
+
+    var canDeleteSelectedCategory: Bool {
+        guard let selectedCategoryID, let category = category(id: selectedCategoryID) else {
+            return false
+        }
+        return !category.isBuiltIn
+    }
+
+    func requestDeleteSelectedCategory() {
+        guard let selectedCategoryID else { return }
+        requestDeleteCategory(selectedCategoryID)
     }
 
     func deleteCategory(_ id: UUID) {
