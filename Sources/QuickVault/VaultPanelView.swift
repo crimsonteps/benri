@@ -491,40 +491,32 @@ private struct RecordDetailView: View {
     }
 
     private func recordValue(_ record: VaultRecord) -> some View {
-        ZStack(alignment: .topTrailing) {
-            ScrollView {
-                Text(record.content.isEmpty ? "暂无内容" : record.content)
-                    .font(.system(size: 15))
-                    .lineSpacing(6)
-                    .foregroundStyle(record.content.isEmpty ? .secondary : .primary)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .contextMenu {
-                        deleteRecordButton(record)
-                    }
-                    .padding(24)
-                    .padding(.trailing, 36)
-            }
-
-            Button {
-                store.copy(record.content)
-            } label: {
-                Image(systemName: "doc.on.doc")
-                    .frame(width: 30, height: 30)
-            }
-            .buttonStyle(.plain)
-            .disabled(record.content.isEmpty)
-            .help("复制当前值")
-            .padding(16)
+        ScrollView {
+            Text(record.content.isEmpty ? "暂无内容" : record.content)
+                .font(.system(size: 15))
+                .lineSpacing(6)
+                .foregroundStyle(record.content.isEmpty ? .secondary : .primary)
+                .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    copyContent(of: record)
+                }
+                .contextMenu {
+                    deleteRecordButton(record)
+                }
+                .padding(24)
         }
     }
 
     private func recordDetail(_ record: VaultRecord) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 7) {
-                    Text(record.name)
-                        .font(.system(size: 22, weight: .bold))
-                        .lineLimit(2)
+            VStack(alignment: .leading, spacing: 10) {
+                Text(record.name)
+                    .font(.system(size: 22, weight: .bold))
+                    .lineLimit(2)
+
+                HStack {
+                    Spacer(minLength: 0)
                     Text(store.categoryName(for: record.categoryID))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.secondary)
@@ -532,9 +524,6 @@ private struct RecordDetailView: View {
                         .padding(.vertical, 4)
                         .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
                 }
-
-                Spacer()
-
             }
             .padding(20)
 
@@ -552,40 +541,32 @@ private struct RecordDetailView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("内容")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Button {
-                                store.copy(record.content)
-                            } label: {
-                                Label("复制", systemImage: "doc.on.doc")
-                                    .font(.system(size: 11, weight: .medium))
-                            }
-                            .buttonStyle(.plain)
-                            .help("复制全部内容")
+                    Text(record.content)
+                        .font(.system(size: 14))
+                        .lineSpacing(5)
+                        .frame(maxWidth: .infinity, minHeight: 82, alignment: .topLeading)
+                        .padding(16)
+                        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 13)
+                                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                         }
-
-                        Text(record.content)
-                            .font(.system(size: 14))
-                            .lineSpacing(5)
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                            .contextMenu {
-                                deleteRecordButton(record)
-                            }
-                    }
-                    .padding(16)
-                    .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 13)
-                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                    }
-                    .padding(16)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            copyContent(of: record)
+                        }
+                        .contextMenu {
+                            deleteRecordButton(record)
+                        }
+                        .padding(16)
                 }
             }
         }
+    }
+
+    private func copyContent(of record: VaultRecord) {
+        guard !record.content.isEmpty else { return }
+        store.copy(record.content)
     }
 
     private func deleteRecordButton(_ record: VaultRecord) -> some View {

@@ -94,21 +94,25 @@ final class PanelController: NSObject, NSWindowDelegate {
                 }
                 return nil
             case kVK_LeftArrow:
-                if usesCommand {
+                if usesCommand || self.store.searchText.isEmpty {
                     self.store.moveKeyboardPaneLeft()
-                    return nil
-                }
-                if self.store.searchText.isEmpty,
-                   self.store.selectedRecord != nil,
-                   self.store.keyboardPane != .categories {
-                    self.store.keyboardPane = .value
-                    self.store.beginEditingSelectedRecord()
                     return nil
                 }
                 return event
             case kVK_RightArrow:
-                if usesCommand || self.store.searchText.isEmpty {
+                if usesCommand {
                     self.store.moveKeyboardPaneRight()
+                    return nil
+                }
+                if self.store.searchText.isEmpty {
+                    switch self.store.keyboardPane {
+                    case .categories:
+                        self.store.moveKeyboardPaneRight()
+                    case .records, .value:
+                        guard self.store.selectedRecord != nil else { return nil }
+                        self.store.keyboardPane = .value
+                        self.store.beginEditingSelectedRecord()
+                    }
                     return nil
                 }
                 return event
