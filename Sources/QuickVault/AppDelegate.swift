@@ -5,19 +5,34 @@ import QuickVaultCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store: VaultViewModel = {
         let environment = ProcessInfo.processInfo.environment
-        let testFileURL = environment["QUICKVAULT_DATA_FILE"].map {
-            URL(fileURLWithPath: $0)
-        }
+        let applicationSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first ?? FileManager.default.homeDirectoryForCurrentUser
+        let vaultFileURL = environment["QUICKVAULT_DATA_FILE"]
+            .map { URL(fileURLWithPath: $0) }
+            ?? applicationSupport
+                .appendingPathComponent("QuickVault", isDirectory: true)
+                .appendingPathComponent("vault.qv")
         let keychainService = environment["QUICKVAULT_KEYCHAIN_SERVICE"]
             ?? "com.crimsonteps.quickvault"
         return VaultViewModel(
-            vaultFileURL: testFileURL,
-            keyStore: KeychainKeyStore(service: keychainService)
+            vaultFileURL: vaultFileURL,
+            keyStore: VaultKeyStore(
+                fileURL: vaultFileURL
+                    .deletingLastPathComponent()
+                    .appendingPathComponent("vault.key"),
+                legacyKeychain: KeychainKeyStore(service: keychainService)
+            )
         )
     }()
     private var panelController: PanelController!
     private var hotKeyManager: HotKeyManager!
     private var statusItem: NSStatusItem!
+    private var hotKeyMenuItems: [GlobalHotKey: NSMenuItem] = [:]
+    private var hotKeyFailureItem: NSMenuItem?
+
+    private static let hotKeyDefaultsKey = "globalHotKey"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -29,9 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.panelController.toggle()
         }
 
-        if !hotKeyManager.registerOptionSpace() {
-            addHotKeyFailureItem()
-        }
+        registerSavedHotKey()
 
         if CommandLine.arguments.contains("--show") {
             DispatchQueue.main.async { [weak self] in
@@ -56,6 +69,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
+    @objc private func selectHotKey(_ sender: NSMenuItem) {
+        guard
+            let rawValue = sender.representedObject as? String,
+            let hotKey = GlobalHotKey(rawValue: rawValue)
+        else { return }
+
+        let currentHotKey = savedHotKey
+        guard hotKey != currentHotKey else { return }
+
+        if hotKeyManager.register(hotKey) {
+            UserDefaults.standard.set(hotKey.rawValue, forKey: Self.hotKeyDefaultsKey)
+            updateHotKeyMenu(selected: hotKey)
+            hotKeyFailureItem?.isHidden = true
+        } else {
+            showHotKeyFailure(hotKey)
+        }
+    }
+
     private func configureStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
@@ -70,6 +101,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "打开 QuickVault", action: #selector(openPanel), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "新建记录", action: #selector(newRecord), keyEquivalent: "n"))
         menu.addItem(.separator())
+        menu.addItem(makeHotKeyMenuItem())
+
+        let failureItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        failureItem.isEnabled = false
+        failureItem.isHidden = true
+        menu.addItem(failureItem)
+        hotKeyFailureItem = failureItem
+
+        menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "打开数据目录", action: #selector(openDataFolder), keyEquivalent: ""))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "退出 QuickVault", action: #selector(quit), keyEquivalent: "q"))
@@ -78,6 +118,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.target = self
         }
         statusItem.menu = menu
+    }
+
+    private func makeHotKeyMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "唤起快捷键", action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: "唤起快捷键")
+
+        for hotKey in GlobalHotKey.allCases {
+            let hotKeyItem = NSMenuItem(
+                title: hotKey.title,
+                action: #selector(selectHotKey(_:)),
+                keyEquivalent: ""
+            )
+            hotKeyItem.target = self
+            hotKeyItem.representedObject = hotKey.rawValue
+            hotKeyMenuItems[hotKey] = hotKeyItem
+            submenu.addItem(hotKeyItem)
+        }
+
+        item.submenu = submenu
+        return item
+    }
+
+    private var savedHotKey: GlobalHotKey {
+        UserDefaults.standard.string(forKey: Self.hotKeyDefaultsKey)
+            .flatMap(GlobalHotKey.init(rawValue:))
+            ?? .optionSpace
+    }
+
+    private func registerSavedHotKey() {
+        let hotKey = savedHotKey
+        updateHotKeyMenu(selected: hotKey)
+        if !hotKeyManager.register(hotKey) {
+            showHotKeyFailure(hotKey)
+        }
+    }
+
+    private func updateHotKeyMenu(selected: GlobalHotKey) {
+        for (hotKey, item) in hotKeyMenuItems {
+            item.state = hotKey == selected ? .on : .off
+        }
+        statusItem.button?.toolTip = "QuickVault · \(selected.title)"
+    }
+
+    private func showHotKeyFailure(_ hotKey: GlobalHotKey) {
+        hotKeyFailureItem?.title = "\(hotKey.title) 已被其他应用占用"
+        hotKeyFailureItem?.isHidden = false
     }
 
     private func configureMainMenu() {
@@ -115,11 +201,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = mainMenu
     }
 
-    private func addHotKeyFailureItem() {
-        guard let menu = statusItem.menu else { return }
-        let item = NSMenuItem(title: "⌥Space 已被其他应用占用", action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        menu.insertItem(item, at: 0)
-        menu.insertItem(.separator(), at: 1)
-    }
 }

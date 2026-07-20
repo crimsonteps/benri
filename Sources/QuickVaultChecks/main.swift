@@ -177,12 +177,39 @@ private func checkFileStore() throws {
     runner.expect(dataAfterFailedLoad == originalData, "解密失败后原文件未被覆盖")
 }
 
+private func checkLocalKeyStore() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("quick-vault-key-check-\(UUID().uuidString)")
+    let keyURL = directory.appendingPathComponent("vault.key")
+    let keyStore = VaultKeyStore(
+        fileURL: keyURL,
+        legacyKeychain: KeychainKeyStore(
+            service: "com.crimsonteps.quickvault.checks.\(UUID().uuidString)"
+        )
+    )
+
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let createdKey = try keyStore.loadOrCreateKey()
+    runner.expect(createdKey.count == 32, "本地密钥长度为 32 字节")
+    let loadedKey = try keyStore.loadKey()
+    runner.expect(loadedKey == createdKey, "本地密钥可重复读取")
+
+    let attributes = try FileManager.default.attributesOfItem(atPath: keyURL.path)
+    let permissions = (attributes[.posixPermissions] as? NSNumber)?.intValue
+    runner.expect(permissions == 0o600, "本地密钥文件权限为 0600")
+
+    try keyStore.deleteKey()
+    runner.expect(!FileManager.default.fileExists(atPath: keyURL.path), "重置会删除本地密钥")
+}
+
 do {
     try checkModelRoundTrip()
     checkSearchAndCategories()
     try checkLegacyMigration()
     try checkCrypto()
     try checkFileStore()
+    try checkLocalKeyStore()
 } catch {
     print("✗ 测试运行异常：\(error.localizedDescription)")
     exit(1)

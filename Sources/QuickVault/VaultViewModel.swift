@@ -38,7 +38,7 @@ enum VaultBootstrapError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingKey:
-            return "保险库文件存在，但本机钥匙串中的解密密钥已丢失。"
+            return "保险库文件存在，但本地解密密钥已丢失。"
         }
     }
 }
@@ -57,25 +57,30 @@ final class VaultViewModel: ObservableObject {
 
     let vaultFileURL: URL
 
-    private let keyStore: KeychainKeyStore
+    private let keyStore: VaultKeyStore
     private var fileStore: VaultFileStore?
     private var clipboardClearWorkItem: DispatchWorkItem?
     private var copyNoticeWorkItem: DispatchWorkItem?
 
     init(
         vaultFileURL: URL? = nil,
-        keyStore: KeychainKeyStore = KeychainKeyStore()
+        keyStore: VaultKeyStore? = nil
     ) {
         let applicationSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
         ).first ?? FileManager.default.homeDirectoryForCurrentUser
 
-        self.vaultFileURL = vaultFileURL
+        let resolvedVaultFileURL = vaultFileURL
             ?? applicationSupport
                 .appendingPathComponent("QuickVault", isDirectory: true)
                 .appendingPathComponent("vault.qv")
-        self.keyStore = keyStore
+        self.vaultFileURL = resolvedVaultFileURL
+        self.keyStore = keyStore ?? VaultKeyStore(
+            fileURL: resolvedVaultFileURL
+                .deletingLastPathComponent()
+                .appendingPathComponent("vault.key")
+        )
 
         bootstrap()
     }
