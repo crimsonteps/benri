@@ -60,12 +60,6 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-
-                Section("剪贴板") {
-                    Text("复制的内容会在 30 秒后清除，前提是剪贴板内容没有被替换。")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
             }
             .formStyle(.grouped)
             .scrollContentBackground(.hidden)

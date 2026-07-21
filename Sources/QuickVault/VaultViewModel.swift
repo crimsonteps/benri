@@ -63,7 +63,6 @@ final class VaultViewModel: ObservableObject {
 
     private let keyStore: VaultKeyStore
     private var fileStore: VaultFileStore?
-    private var clipboardClearWorkItem: DispatchWorkItem?
     private var recordSaveWorkItem: DispatchWorkItem?
 
     init(
@@ -329,15 +328,6 @@ final class VaultViewModel: ObservableObject {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(value, forType: .string)
-
-        clipboardClearWorkItem?.cancel()
-        let workItem = DispatchWorkItem {
-            if NSPasteboard.general.string(forType: .string) == value {
-                NSPasteboard.general.clearContents()
-            }
-        }
-        clipboardClearWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: workItem)
     }
 
     func openDataFolder() {
