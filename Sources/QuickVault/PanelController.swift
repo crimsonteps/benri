@@ -1,7 +1,13 @@
 import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
+import OSLog
 import SwiftUI
+
+private let pasteLogger = Logger(
+    subsystem: "com.crimsonteps.quickvault",
+    category: "Paste"
+)
 
 extension Notification.Name {
     static let quickVaultFocusSearch = Notification.Name("QuickVault.FocusSearch")
@@ -9,7 +15,7 @@ extension Notification.Name {
 
 final class QuickVaultPanel: NSPanel {
     override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
+    override var canBecomeMain: Bool { false }
 }
 
 @MainActor
@@ -19,6 +25,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var keyMonitor: Any?
     private var shouldPositionOnNextShow = true
     private var shouldHideAfterEditorDismissal = false
+    private var isHidingPanel = false
     private var previousApplication: NSRunningApplication?
     private var previousFocusedElement: AXUIElement?
     private var activationObserver: NSObjectProtocol?
@@ -34,7 +41,14 @@ final class PanelController: NSObject, NSWindowDelegate {
         self.store = store
         self.panel = QuickVaultPanel(
             contentRect: NSRect(x: 0, y: 0, width: 820, height: 520),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            styleMask: [
+                .titled,
+                .closable,
+                .miniaturizable,
+                .resizable,
+                .fullSizeContentView,
+                .nonactivatingPanel
+            ],
             backing: .buffered,
             defer: false
         )
@@ -43,6 +57,8 @@ final class PanelController: NSObject, NSWindowDelegate {
 
         panel.delegate = self
         panel.isReleasedWhenClosed = false
+        panel.becomesKeyOnlyIfNeeded = false
+        panel.hidesOnDeactivate = false
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenPrimary]
         panel.title = "benri"
@@ -131,6 +147,7 @@ final class PanelController: NSObject, NSWindowDelegate {
                 }
                 if self.store.keyboardPane != .categories,
                    self.store.copySelectedRecord() {
+                    pasteLogger.info("Enter requested paste")
                     self.hide(
                         restoringPreviousApplication: true,
                         pastingIntoPreviousApplication: true
@@ -181,6 +198,9 @@ final class PanelController: NSObject, NSWindowDelegate {
                    != NSRunningApplication.current.processIdentifier {
                 previousApplication = frontmostApplication
                 previousFocusedElement = focusedUIElement(for: frontmostApplication)
+                pasteLogger.info(
+                    "Showing nonactivating panel targetPID=\(frontmostApplication.processIdentifier, privacy: .public)"
+                )
             }
         }
 
@@ -192,10 +212,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         if panel.isMiniaturized {
             panel.deminiaturize(nil)
         }
-        NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
-        NSApp.activate(ignoringOtherApps: true)
-        panel.makeKeyAndOrderFront(nil)
         panel.orderFrontRegardless()
+        panel.makeKeyAndOrderFront(nil)
         panel.makeKey()
 
         DispatchQueue.main.async { [weak self] in
@@ -207,6 +225,10 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func showNewRecord() {
         show()
+        NSRunningApplication.current.activate(
+            options: [.activateAllWindows, .activateIgnoringOtherApps]
+        )
+        NSApp.activate(ignoringOtherApps: true)
         store.beginNewRecord()
     }
 
@@ -214,7 +236,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         restoringPreviousApplication shouldRestore: Bool,
         pastingIntoPreviousApplication shouldPaste: Bool = false
     ) {
-        guard panel.attachedSheet == nil else { return }
+        guard panel.attachedSheet == nil, !isHidingPanel else { return }
+        isHidingPanel = true
+        defer { isHidingPanel = false }
         store.flushPendingRecordSave()
         panel.orderOut(nil)
 
@@ -230,6 +254,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         self.previousApplication = nil
         previousFocusedElement = nil
         let canPaste = !shouldPaste || accessibilityPermissionGranted(prompt: true)
+        pasteLogger.info(
+            "Hiding panel paste=\(shouldPaste, privacy: .public) targetPID=\(previousApplication.processIdentifier, privacy: .public) targetActive=\(previousApplication.isActive, privacy: .public) accessibility=\(canPaste, privacy: .public)"
+        )
 
         DispatchQueue.main.async { [weak self] in
             guard !previousApplication.isTerminated else { return }
@@ -237,6 +264,16 @@ final class PanelController: NSObject, NSWindowDelegate {
                 previousApplication.activate(
                     options: [.activateAllWindows, .activateIgnoringOtherApps]
                 )
+                return
+            }
+            if previousApplication.isActive {
+                pasteLogger.info("Target stayed active; pasting without app switch")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                    self?.restoreFocusAndPaste(
+                        focusedElement,
+                        into: previousApplication
+                    )
+                }
                 return
             }
             self?.activateAndPaste(
@@ -251,6 +288,18 @@ final class PanelController: NSObject, NSWindowDelegate {
         return false
     }
 
+    func windowDidResignKey(_ notification: Notification) {
+        guard
+            panel.isVisible,
+            panel.attachedSheet == nil,
+            !isHidingPanel,
+            !NSRunningApplication.current.isActive
+        else { return }
+
+        pasteLogger.debug("Nonactivating panel resigned key; hiding")
+        hide(restoringPreviousApplication: false)
+    }
+
     private func editorDidDismiss() {
         guard shouldHideAfterEditorDismissal else { return }
         shouldHideAfterEditorDismissal = false
@@ -258,7 +307,10 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     private func focusedUIElement(for application: NSRunningApplication) -> AXUIElement? {
-        guard AXIsProcessTrusted() else { return nil }
+        guard AXIsProcessTrusted() else {
+            pasteLogger.error("Accessibility not trusted while capturing focus")
+            return nil
+        }
 
         let applicationElement = AXUIElementCreateApplication(application.processIdentifier)
         var focusedElement: CFTypeRef?
@@ -267,8 +319,14 @@ final class PanelController: NSObject, NSWindowDelegate {
             kAXFocusedUIElementAttribute as CFString,
             &focusedElement
         ) == .success else {
+            pasteLogger.error(
+                "Unable to capture focused element targetPID=\(application.processIdentifier, privacy: .public)"
+            )
             return nil
         }
+        pasteLogger.debug(
+            "Captured focused element targetPID=\(application.processIdentifier, privacy: .public)"
+        )
         return (focusedElement as! AXUIElement)
     }
 
@@ -277,7 +335,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         let options = [
             kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true
         ] as CFDictionary
-        return AXIsProcessTrustedWithOptions(options)
+        let granted = AXIsProcessTrustedWithOptions(options)
+        pasteLogger.info("Accessibility trusted=\(granted, privacy: .public)")
+        return granted
     }
 
     private func activateAndPaste(
@@ -301,6 +361,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             else { return }
 
             Task { @MainActor [weak self] in
+                pasteLogger.info("Received target activation notification")
                 self?.completePendingPaste()
             }
         }
@@ -354,16 +415,21 @@ final class PanelController: NSObject, NSWindowDelegate {
             let applicationElement = AXUIElementCreateApplication(
                 application.processIdentifier
             )
-            AXUIElementSetAttributeValue(
+            let applicationFocusResult = AXUIElementSetAttributeValue(
                 applicationElement,
                 kAXFocusedUIElementAttribute as CFString,
                 focusedElement
             )
-            AXUIElementSetAttributeValue(
+            let elementFocusResult = AXUIElementSetAttributeValue(
                 focusedElement,
                 kAXFocusedAttribute as CFString,
                 kCFBooleanTrue
             )
+            pasteLogger.info(
+                "Focus restore appResult=\(applicationFocusResult.rawValue, privacy: .public) elementResult=\(elementFocusResult.rawValue, privacy: .public)"
+            )
+        } else {
+            pasteLogger.info("No captured AX element; using target app current focus")
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
@@ -407,6 +473,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         valueDown.post(tap: .cghidEventTap)
         valueUp.post(tap: .cghidEventTap)
         commandUp.post(tap: .cghidEventTap)
+        pasteLogger.info("Posted Command-V events")
     }
 
     private func runAppleScriptPaste() {
@@ -415,6 +482,11 @@ final class PanelController: NSObject, NSWindowDelegate {
         )
         var error: NSDictionary?
         script?.executeAndReturnError(&error)
+        if error != nil {
+            pasteLogger.error("AppleScript paste fallback failed")
+        } else {
+            pasteLogger.info("AppleScript paste fallback executed")
+        }
     }
 
     private func positionPanel() {
