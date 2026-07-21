@@ -32,7 +32,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKeyManager: HotKeyManager!
     private var statusItem: NSStatusItem?
     private var settingsWindowController: SettingsWindowController!
-    private var hotKeyMenuItems: [GlobalHotKey: NSMenuItem] = [:]
     private var hotKeyFailureItem: NSMenuItem?
     private var cancellables = Set<AnyCancellable>()
 
@@ -86,10 +85,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelController.showNewRecord()
     }
 
-    @objc private func openDataFolder() {
-        store.openDataFolder()
-    }
-
     @objc private func openSettings() {
         settingsWindowController.show()
     }
@@ -106,15 +101,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.terminate(self)
     }
 
-    @objc private func selectHotKey(_ sender: NSMenuItem) {
-        guard
-            let rawValue = sender.representedObject as? String,
-            let hotKey = GlobalHotKey(rawValue: rawValue)
-        else { return }
-
-        applyHotKey(hotKey)
-    }
-
     private func configureStatusItem() {
         guard statusItem == nil else { return }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -127,8 +113,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "打开 benri", action: #selector(openPanel), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "新建记录", action: #selector(newRecord), keyEquivalent: "n"))
-        menu.addItem(.separator())
-        menu.addItem(makeHotKeyMenuItem())
 
         let failureItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         failureItem.isEnabled = false
@@ -138,7 +122,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "设置…", action: #selector(openSettings), keyEquivalent: ","))
-        menu.addItem(NSMenuItem(title: "打开数据目录", action: #selector(openDataFolder), keyEquivalent: ""))
         menu.addItem(.separator())
         let quitItem = NSMenuItem(
             title: "退出 benri",
@@ -152,7 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.target = self
         }
         item.menu = menu
-        updateHotKeyMenu(selected: settings.globalHotKey)
+        updateHotKeyToolTip(settings.globalHotKey)
 
         if let hotKeyError = settings.hotKeyError {
             failureItem.title = hotKeyError
@@ -233,33 +216,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSStatusBar.system.removeStatusItem(statusItem)
         }
         statusItem = nil
-        hotKeyMenuItems.removeAll()
         hotKeyFailureItem = nil
-    }
-
-    private func makeHotKeyMenuItem() -> NSMenuItem {
-        let item = NSMenuItem(title: "唤起快捷键", action: nil, keyEquivalent: "")
-        let submenu = NSMenu(title: "唤起快捷键")
-
-        for hotKey in GlobalHotKey.allCases {
-            let hotKeyItem = NSMenuItem(
-                title: hotKey.title,
-                action: #selector(selectHotKey(_:)),
-                keyEquivalent: ""
-            )
-            hotKeyItem.target = self
-            hotKeyItem.representedObject = hotKey.rawValue
-            hotKeyMenuItems[hotKey] = hotKeyItem
-            submenu.addItem(hotKeyItem)
-        }
-
-        item.submenu = submenu
-        return item
     }
 
     private func registerSavedHotKey() {
         let hotKey = settings.globalHotKey
-        updateHotKeyMenu(selected: hotKey)
+        updateHotKeyToolTip(hotKey)
         if !hotKeyManager.register(hotKey) {
             showHotKeyFailure(hotKey)
         }
@@ -271,18 +233,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if hotKeyManager.register(hotKey) {
             settings.globalHotKey = hotKey
             settings.hotKeyError = nil
-            updateHotKeyMenu(selected: hotKey)
+            updateHotKeyToolTip(hotKey)
             hotKeyFailureItem?.isHidden = true
         } else {
             showHotKeyFailure(hotKey)
         }
     }
 
-    private func updateHotKeyMenu(selected: GlobalHotKey) {
-        for (hotKey, item) in hotKeyMenuItems {
-            item.state = hotKey == selected ? .on : .off
-        }
-        statusItem?.button?.toolTip = "benri · \(selected.title)"
+    private func updateHotKeyToolTip(_ hotKey: GlobalHotKey) {
+        statusItem?.button?.toolTip = "benri · \(hotKey.title)"
     }
 
     private func showHotKeyFailure(_ hotKey: GlobalHotKey) {
