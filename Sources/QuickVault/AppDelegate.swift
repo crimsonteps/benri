@@ -94,8 +94,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindowController.show()
     }
 
-    @objc private func quit() {
-        NSApp.terminate(nil)
+    @objc private func quit(_ sender: Any?) {
+        store.flushPendingRecordSave()
+        NSApplication.shared.terminate(self)
     }
 
     @objc private func selectHotKey(_ sender: NSMenuItem) {
@@ -135,7 +136,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "设置…", action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(NSMenuItem(title: "打开数据目录", action: #selector(openDataFolder), keyEquivalent: ""))
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "退出 valuet", action: #selector(quit), keyEquivalent: "q"))
+        let quitItem = NSMenuItem(
+            title: "退出 valuet",
+            action: #selector(quit(_:)),
+            keyEquivalent: "q"
+        )
+        quitItem.keyEquivalentModifierMask = [.command]
+        menu.addItem(quitItem)
 
         for item in menu.items {
             item.target = self
@@ -238,11 +245,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             keyEquivalent: ","
         ).target = self
         appMenu.addItem(.separator())
-        appMenu.addItem(
+        let quitItem = appMenu.addItem(
             withTitle: "退出 valuet",
-            action: #selector(NSApplication.terminate(_:)),
+            action: #selector(quit(_:)),
             keyEquivalent: "q"
         )
+        quitItem.target = self
         appItem.submenu = appMenu
         mainMenu.addItem(appItem)
 
