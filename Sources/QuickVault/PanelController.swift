@@ -21,6 +21,10 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var shouldHideAfterEditorDismissal = false
     private var previousApplication: NSRunningApplication?
     private var previousFocusedElement: AXUIElement?
+    private var activationObserver: NSObjectProtocol?
+    private var activationFallbackWorkItem: DispatchWorkItem?
+    private var pendingPasteApplication: NSRunningApplication?
+    private var pendingPasteFocusedElement: AXUIElement?
 
     init(
         store: VaultViewModel,
@@ -144,6 +148,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         if let keyMonitor {
             NSEvent.removeMonitor(keyMonitor)
         }
+        if let activationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(activationObserver)
+        }
+        activationFallbackWorkItem?.cancel()
     }
 
     var isVisible: Bool {
@@ -172,7 +180,7 @@ final class PanelController: NSObject, NSWindowDelegate {
                frontmostApplication.processIdentifier
                    != NSRunningApplication.current.processIdentifier {
                 previousApplication = frontmostApplication
-                previousFocusedElement = focusedUIElement()
+                previousFocusedElement = focusedUIElement(for: frontmostApplication)
             }
         }
 
@@ -225,12 +233,16 @@ final class PanelController: NSObject, NSWindowDelegate {
 
         DispatchQueue.main.async { [weak self] in
             guard !previousApplication.isTerminated else { return }
-            previousApplication.activate(options: [.activateIgnoringOtherApps])
-
-            guard shouldPaste, canPaste else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                self?.restoreFocusAndPaste(focusedElement)
+            guard shouldPaste, canPaste else {
+                previousApplication.activate(
+                    options: [.activateAllWindows, .activateIgnoringOtherApps]
+                )
+                return
             }
+            self?.activateAndPaste(
+                into: previousApplication,
+                focusedElement: focusedElement
+            )
         }
     }
 
@@ -245,13 +257,13 @@ final class PanelController: NSObject, NSWindowDelegate {
         hide(restoringPreviousApplication: true)
     }
 
-    private func focusedUIElement() -> AXUIElement? {
+    private func focusedUIElement(for application: NSRunningApplication) -> AXUIElement? {
         guard AXIsProcessTrusted() else { return nil }
 
-        let systemWideElement = AXUIElementCreateSystemWide()
+        let applicationElement = AXUIElementCreateApplication(application.processIdentifier)
         var focusedElement: CFTypeRef?
         guard AXUIElementCopyAttributeValue(
-            systemWideElement,
+            applicationElement,
             kAXFocusedUIElementAttribute as CFString,
             &focusedElement
         ) == .success else {
@@ -268,8 +280,85 @@ final class PanelController: NSObject, NSWindowDelegate {
         return AXIsProcessTrustedWithOptions(options)
     }
 
-    private func restoreFocusAndPaste(_ focusedElement: AXUIElement?) {
+    private func activateAndPaste(
+        into application: NSRunningApplication,
+        focusedElement: AXUIElement?
+    ) {
+        cancelPendingPaste()
+        pendingPasteApplication = application
+        pendingPasteFocusedElement = focusedElement
+
+        let notificationCenter = NSWorkspace.shared.notificationCenter
+        activationObserver = notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard
+                let activatedApplication = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                    as? NSRunningApplication,
+                activatedApplication.processIdentifier == application.processIdentifier
+            else { return }
+
+            Task { @MainActor [weak self] in
+                self?.completePendingPaste()
+            }
+        }
+
+        let fallbackWorkItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            if !application.isActive {
+                application.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+            }
+            self.completePendingPaste()
+        }
+        activationFallbackWorkItem = fallbackWorkItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: fallbackWorkItem)
+
+        application.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+        if application.isActive {
+            completePendingPaste()
+        }
+    }
+
+    private func completePendingPaste() {
+        guard let application = pendingPasteApplication else { return }
+        let focusedElement = pendingPasteFocusedElement
+        cancelPendingPaste()
+
+        let delay = application.isActive ? 0.08 : 0.2
+        if !application.isActive {
+            application.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            self?.restoreFocusAndPaste(focusedElement, into: application)
+        }
+    }
+
+    private func cancelPendingPaste() {
+        if let activationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(activationObserver)
+        }
+        activationObserver = nil
+        activationFallbackWorkItem?.cancel()
+        activationFallbackWorkItem = nil
+        pendingPasteApplication = nil
+        pendingPasteFocusedElement = nil
+    }
+
+    private func restoreFocusAndPaste(
+        _ focusedElement: AXUIElement?,
+        into application: NSRunningApplication
+    ) {
         if let focusedElement {
+            let applicationElement = AXUIElementCreateApplication(
+                application.processIdentifier
+            )
+            AXUIElementSetAttributeValue(
+                applicationElement,
+                kAXFocusedUIElementAttribute as CFString,
+                focusedElement
+            )
             AXUIElementSetAttributeValue(
                 focusedElement,
                 kAXFocusedAttribute as CFString,
@@ -277,24 +366,55 @@ final class PanelController: NSObject, NSWindowDelegate {
             )
         }
 
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.postPasteShortcut()
+        }
+    }
+
+    private func postPasteShortcut() {
         guard
-            let source = CGEventSource(stateID: .hidSystemState),
-            let keyDown = CGEvent(
+            let source = CGEventSource(stateID: .combinedSessionState),
+            let commandDown = CGEvent(
+                keyboardEventSource: source,
+                virtualKey: CGKeyCode(kVK_Command),
+                keyDown: true
+            ),
+            let valueDown = CGEvent(
                 keyboardEventSource: source,
                 virtualKey: CGKeyCode(kVK_ANSI_V),
                 keyDown: true
             ),
-            let keyUp = CGEvent(
+            let valueUp = CGEvent(
                 keyboardEventSource: source,
                 virtualKey: CGKeyCode(kVK_ANSI_V),
                 keyDown: false
+            ),
+            let commandUp = CGEvent(
+                keyboardEventSource: source,
+                virtualKey: CGKeyCode(kVK_Command),
+                keyDown: false
             )
-        else { return }
+        else {
+            runAppleScriptPaste()
+            return
+        }
 
-        keyDown.flags = .maskCommand
-        keyUp.flags = .maskCommand
-        keyDown.post(tap: .cghidEventTap)
-        keyUp.post(tap: .cghidEventTap)
+        source.localEventsSuppressionInterval = 0
+        commandDown.flags = .maskCommand
+        valueDown.flags = .maskCommand
+        valueUp.flags = .maskCommand
+        commandDown.post(tap: .cghidEventTap)
+        valueDown.post(tap: .cghidEventTap)
+        valueUp.post(tap: .cghidEventTap)
+        commandUp.post(tap: .cghidEventTap)
+    }
+
+    private func runAppleScriptPaste() {
+        let script = NSAppleScript(
+            source: "tell application \"System Events\" to keystroke \"v\" using command down"
+        )
+        var error: NSDictionary?
+        script?.executeAndReturnError(&error)
     }
 
     private func positionPanel() {
