@@ -181,12 +181,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             context.saveGState()
             context.setBlendMode(.clear)
 
-            for x in [4.3, 11.2] {
+            for x in [5.0, 11.2] {
                 let eyeRect = NSRect(
                     x: x * scale,
-                    y: 10.2 * scale,
-                    width: 2.5 * scale,
-                    height: 5.4 * scale
+                    y: 9.1 * scale,
+                    width: 1.8 * scale,
+                    height: 4.2 * scale
                 )
                 NSBezierPath(
                     roundedRect: eyeRect,
@@ -196,13 +196,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             let smile = NSBezierPath()
-            smile.move(to: NSPoint(x: 3.8 * scale, y: 8 * scale))
+            smile.move(to: NSPoint(x: 5.0 * scale, y: 7.0 * scale))
             smile.curve(
-                to: NSPoint(x: 14.2 * scale, y: 8 * scale),
-                controlPoint1: NSPoint(x: 6.1 * scale, y: 4.5 * scale),
-                controlPoint2: NSPoint(x: 11.9 * scale, y: 4.5 * scale)
+                to: NSPoint(x: 13.0 * scale, y: 7.0 * scale),
+                controlPoint1: NSPoint(x: 6.8 * scale, y: 5.0 * scale),
+                controlPoint2: NSPoint(x: 11.2 * scale, y: 5.0 * scale)
             )
-            smile.lineWidth = 2.2 * scale
+            smile.lineWidth = 1.7 * scale
             smile.lineCapStyle = .round
             NSColor.black.setStroke()
             smile.stroke()

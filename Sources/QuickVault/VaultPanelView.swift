@@ -187,8 +187,14 @@ private struct SidebarView: View {
     }
 
     private var header: some View {
-        Color.clear
-            .frame(height: 57)
+        Image(nsImage: NSApp.applicationIconImage)
+            .resizable()
+            .interpolation(.high)
+            .frame(width: 28, height: 28)
+            .accessibilityHidden(true)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 15)
+            .padding(.bottom, 14)
     }
 
     private func iconName(for category: VaultCategory) -> String {
