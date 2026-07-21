@@ -10,7 +10,7 @@ app:
 	./Scripts/package-app.sh
 
 run: app
-	open dist/benri.app
+	open dist/Benri.app
 
 clean:
 	swift package clean

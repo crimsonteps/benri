@@ -94,21 +94,13 @@ struct RecordEditorView: View {
 
             HStack {
                 Spacer()
-                Button("取消") {
-                    dismiss()
-                }
+                Button("取消", action: cancel)
                 .keyboardShortcut(.cancelAction)
+                .help("取消 Esc")
 
-                Button("保存") {
-                    store.saveRecord(
-                        id: context.recordID,
-                        name: name,
-                        categoryID: selectedCategoryID,
-                        content: content
-                    )
-                    dismiss()
-                }
+                Button("保存", action: save)
                 .keyboardShortcut(.defaultAction)
+                .help("保存 ⌘S / ⌘↩")
                 .disabled(!canSave)
             }
             .padding(12)
@@ -120,5 +112,26 @@ struct RecordEditorView: View {
                 nameIsFocused = true
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .quickVaultSaveRecordEditor)) { _ in
+            save()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .quickVaultCancelRecordEditor)) { _ in
+            cancel()
+        }
+    }
+
+    private func save() {
+        guard canSave else { return }
+        store.saveRecord(
+            id: context.recordID,
+            name: name,
+            categoryID: selectedCategoryID,
+            content: content
+        )
+        dismiss()
+    }
+
+    private func cancel() {
+        dismiss()
     }
 }

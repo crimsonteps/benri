@@ -5,17 +5,17 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>zh_CN</string>
     <key>CFBundleDisplayName</key>
-    <string>benri</string>
+    <string>Benri</string>
     <key>CFBundleExecutable</key>
-    <string>benri</string>
+    <string>Benri</string>
     <key>CFBundleIconFile</key>
-    <string>benri</string>
+    <string>Benri</string>
     <key>CFBundleIdentifier</key>
     <string>com.crimsonteps.quickvault</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>benri</string>
+    <string>Benri</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

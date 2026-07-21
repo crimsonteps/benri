@@ -11,6 +11,8 @@ private let pasteLogger = Logger(
 
 extension Notification.Name {
     static let quickVaultFocusSearch = Notification.Name("QuickVault.FocusSearch")
+    static let quickVaultSaveRecordEditor = Notification.Name("QuickVault.SaveRecordEditor")
+    static let quickVaultCancelRecordEditor = Notification.Name("QuickVault.CancelRecordEditor")
 }
 
 final class QuickVaultPanel: NSPanel {
@@ -61,7 +63,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.hidesOnDeactivate = false
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenPrimary]
-        panel.title = "benri"
+        panel.title = "Benri"
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.titlebarSeparatorStyle = .none
@@ -86,17 +88,22 @@ final class PanelController: NSObject, NSWindowDelegate {
 
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self,
-                  self.panel.isKeyWindow,
-                  self.panel.attachedSheet == nil,
+                  self.panel.isKeyWindow || self.panel.attachedSheet?.isKeyWindow == true,
                   self.store.alert == nil
             else { return event }
 
-            if self.store.isEditingRecordName {
+            if self.handleRecordEditorShortcut(event) {
+                return nil
+            }
+            guard self.panel.attachedSheet == nil else { return event }
+
+            if self.store.isEditingRecordName, self.store.keyboardPane == .value {
                 return event
             }
 
             if let textView = self.panel.firstResponder as? NSTextView,
-               !textView.isFieldEditor {
+               !textView.isFieldEditor,
+               self.store.keyboardPane == .value {
                 return event
             }
 
@@ -158,6 +165,25 @@ final class PanelController: NSObject, NSWindowDelegate {
             default:
                 return event
             }
+        }
+    }
+
+    private func handleRecordEditorShortcut(_ event: NSEvent) -> Bool {
+        guard panel.attachedSheet?.isKeyWindow == true else { return false }
+
+        let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        if event.keyCode == kVK_Escape, modifiers.isEmpty {
+            NotificationCenter.default.post(name: .quickVaultCancelRecordEditor, object: nil)
+            return true
+        }
+
+        guard store.recordEditor != nil, modifiers == [.command] else { return false }
+        switch Int(event.keyCode) {
+        case kVK_ANSI_S, kVK_Return, kVK_ANSI_KeypadEnter:
+            NotificationCenter.default.post(name: .quickVaultSaveRecordEditor, object: nil)
+            return true
+        default:
+            return false
         }
     }
 

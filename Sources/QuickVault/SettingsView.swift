@@ -10,7 +10,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Label("设置", systemImage: "gearshape")
                     .font(.system(size: 18, weight: .semibold))
-                Text("调整 benri 的外观和唤起方式")
+                Text("调整 Benri 的外观和唤起方式")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
@@ -32,14 +32,14 @@ struct SettingsView: View {
                 Section("菜单栏") {
                     Toggle("显示菜单栏图标", isOn: $settings.showsMenuBarIcon)
 
-                    Text("隐藏后仍可通过全局快捷键唤起 benri。")
+                    Text("隐藏后仍可通过全局快捷键唤起 Benri。")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
 
                 Section("快捷键") {
                     Picker(
-                        "唤起 benri",
+                        "唤起 Benri",
                         selection: Binding(
                             get: { settings.globalHotKey },
                             set: selectHotKey

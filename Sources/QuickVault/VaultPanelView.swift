@@ -2,6 +2,11 @@ import AppKit
 import QuickVaultCore
 import SwiftUI
 
+@MainActor
+private func releasePanelEditingFocus() {
+    NSApp.keyWindow?.makeFirstResponder(nil)
+}
+
 struct VaultPanelView: View {
     @ObservedObject var store: VaultViewModel
     @ObservedObject var settings: AppSettings
@@ -112,6 +117,7 @@ private struct SidebarView: View {
                         isKeyboardActive: store.keyboardPane == .categories,
                         isExpanded: isExpanded
                     ) {
+                        releasePanelEditingFocus()
                         store.selectCategory(nil)
                     }
 
@@ -124,6 +130,7 @@ private struct SidebarView: View {
                             isKeyboardActive: store.keyboardPane == .categories,
                             isExpanded: isExpanded
                         ) {
+                            releasePanelEditingFocus()
                             store.selectCategory(category.id)
                         }
                         .contextMenu {
@@ -289,6 +296,7 @@ private struct RecordListView: View {
                                 isSelected: store.selectedRecordID == record.id,
                                 isKeyboardActive: store.keyboardPane == .records
                             ) {
+                                releasePanelEditingFocus()
                                 store.keyboardPane = .records
                                 store.selectedRecordID = record.id
                             } deleteAction: {
