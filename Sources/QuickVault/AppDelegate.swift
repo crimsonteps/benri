@@ -120,10 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem = item
         if let button = item.button {
-            button.image = NSImage(
-                systemSymbolName: "lock.square.stack",
-                accessibilityDescription: "benri"
-            )
+            button.image = makeStatusItemImage()
             button.toolTip = "benri"
         }
 
@@ -161,6 +158,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             failureItem.title = hotKeyError
             failureItem.isHidden = false
         }
+    }
+
+    private func makeStatusItemImage() -> NSImage {
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
+            let scale = rect.width / 18
+
+            let faceRect = NSRect(
+                x: 1.2 * scale,
+                y: 1.2 * scale,
+                width: 15.6 * scale,
+                height: 15.6 * scale
+            )
+            NSColor.black.setFill()
+            NSBezierPath(
+                roundedRect: faceRect,
+                xRadius: 4.2 * scale,
+                yRadius: 4.2 * scale
+            ).fill()
+
+            guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            context.saveGState()
+            context.setBlendMode(.clear)
+
+            for x in [4.3, 11.2] {
+                let eyeRect = NSRect(
+                    x: x * scale,
+                    y: 10.2 * scale,
+                    width: 2.5 * scale,
+                    height: 5.4 * scale
+                )
+                NSBezierPath(
+                    roundedRect: eyeRect,
+                    xRadius: eyeRect.width / 2,
+                    yRadius: eyeRect.width / 2
+                ).fill()
+            }
+
+            let smile = NSBezierPath()
+            smile.move(to: NSPoint(x: 3.8 * scale, y: 8 * scale))
+            smile.curve(
+                to: NSPoint(x: 14.2 * scale, y: 8 * scale),
+                controlPoint1: NSPoint(x: 6.1 * scale, y: 4.5 * scale),
+                controlPoint2: NSPoint(x: 11.9 * scale, y: 4.5 * scale)
+            )
+            smile.lineWidth = 2.2 * scale
+            smile.lineCapStyle = .round
+            NSColor.black.setStroke()
+            smile.stroke()
+            context.restoreGState()
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "benri"
+        return image
     }
 
     private func observeMenuBarIconVisibility() {

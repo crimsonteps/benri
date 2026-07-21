@@ -1,17 +1,27 @@
 import AppKit
 import Foundation
 
-guard CommandLine.arguments.count == 2 else {
-    fputs("Usage: swift generate-icon.swift <iconset-directory>\n", stderr)
+guard CommandLine.arguments.count == 3 else {
+    fputs("Usage: swift generate-icon.swift <iconset-directory> <source-image>\n", stderr)
     exit(2)
 }
 
 let outputDirectory = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
+let sourceURL = URL(fileURLWithPath: CommandLine.arguments[2])
 _ = NSApplication.shared
 try FileManager.default.createDirectory(
     at: outputDirectory,
     withIntermediateDirectories: true
 )
+
+guard let sourceImage = NSImage(contentsOf: sourceURL) else {
+    fputs("Unable to load icon source: \(sourceURL.path)\n", stderr)
+    exit(2)
+}
+
+// The source is a screenshot. This rectangle isolates the white app icon and
+// excludes the surrounding blue screenshot background.
+let sourceIconRect = NSRect(x: 10, y: 6, width: 220, height: 220)
 
 let variants: [(pixels: Int, filename: String)] = [
     (16, "icon_16x16.png"),
@@ -61,62 +71,18 @@ func renderIcon(pixels: Int) throws -> Data {
         xRadius: CGFloat(pixels) * 0.22,
         yRadius: CGFloat(pixels) * 0.22
     )
-    let blue = NSColor(srgbRed: 0.46, green: 0.68, blue: 0.93, alpha: 1)
-    blue.setFill()
-    outerPath.fill()
-
-    let markSize = CGFloat(pixels) * 0.30
-    let markRect = NSRect(
-        x: (CGFloat(pixels) - markSize) / 2,
-        y: (CGFloat(pixels) - markSize) / 2 + CGFloat(pixels) * 0.01,
-        width: markSize,
-        height: markSize
+    outerPath.addClip()
+    sourceImage.draw(
+        in: outerRect,
+        from: sourceIconRect,
+        operation: .copy,
+        fraction: 1,
+        respectFlipped: false,
+        hints: [.interpolation: NSImageInterpolation.high]
     )
-    let markPath = NSBezierPath(
-        roundedRect: markRect,
-        xRadius: markSize * 0.24,
-        yRadius: markSize * 0.24
-    )
-    NSColor.white.setFill()
-    markPath.fill()
-
-    let slotRect = NSRect(
-        x: markRect.midX - markSize * 0.13,
-        y: markRect.minY + markSize * 0.60,
-        width: markSize * 0.26,
-        height: max(1, markSize * 0.055)
-    )
-    let slotPath = NSBezierPath(
-        roundedRect: slotRect,
-        xRadius: slotRect.height / 2,
-        yRadius: slotRect.height / 2
-    )
-    blue.setFill()
-    slotPath.fill()
-
-    let smilePath = NSBezierPath()
-    smilePath.move(to: NSPoint(
-        x: markRect.midX - markSize * 0.13,
-        y: markRect.minY + markSize * 0.37
-    ))
-    smilePath.curve(
-        to: NSPoint(
-            x: markRect.midX + markSize * 0.13,
-            y: markRect.minY + markSize * 0.37
-        ),
-        controlPoint1: NSPoint(
-            x: markRect.midX - markSize * 0.07,
-            y: markRect.minY + markSize * 0.27
-        ),
-        controlPoint2: NSPoint(
-            x: markRect.midX + markSize * 0.07,
-            y: markRect.minY + markSize * 0.27
-        )
-    )
-    smilePath.lineWidth = max(1, CGFloat(pixels) * 0.012)
-    smilePath.lineCapStyle = .round
-    blue.setStroke()
-    smilePath.stroke()
+    NSColor.white.withAlphaComponent(0.92).setStroke()
+    outerPath.lineWidth = max(1, CGFloat(pixels) * 0.012)
+    outerPath.stroke()
 
     guard let png = bitmap.representation(using: .png, properties: [:]) else {
         throw CocoaError(.fileWriteUnknown)
