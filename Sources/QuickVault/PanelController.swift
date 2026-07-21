@@ -439,12 +439,7 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     private func postPasteShortcut() {
         guard
-            let source = CGEventSource(stateID: .combinedSessionState),
-            let commandDown = CGEvent(
-                keyboardEventSource: source,
-                virtualKey: CGKeyCode(kVK_Command),
-                keyDown: true
-            ),
+            let source = CGEventSource(stateID: .privateState),
             let valueDown = CGEvent(
                 keyboardEventSource: source,
                 virtualKey: CGKeyCode(kVK_ANSI_V),
@@ -454,11 +449,6 @@ final class PanelController: NSObject, NSWindowDelegate {
                 keyboardEventSource: source,
                 virtualKey: CGKeyCode(kVK_ANSI_V),
                 keyDown: false
-            ),
-            let commandUp = CGEvent(
-                keyboardEventSource: source,
-                virtualKey: CGKeyCode(kVK_Command),
-                keyDown: false
             )
         else {
             runAppleScriptPaste()
@@ -466,14 +456,13 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
 
         source.localEventsSuppressionInterval = 0
-        commandDown.flags = .maskCommand
         valueDown.flags = .maskCommand
         valueUp.flags = .maskCommand
-        commandDown.post(tap: .cghidEventTap)
         valueDown.post(tap: .cghidEventTap)
-        valueUp.post(tap: .cghidEventTap)
-        commandUp.post(tap: .cghidEventTap)
-        pasteLogger.info("Posted Command-V events")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+            valueUp.post(tap: .cghidEventTap)
+            pasteLogger.info("Posted Command-V events")
+        }
     }
 
     private func runAppleScriptPaste() {
