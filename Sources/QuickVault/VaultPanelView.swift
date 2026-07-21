@@ -9,8 +9,7 @@ struct VaultPanelView: View {
     let onClose: () -> Void
     let onEditorDismissed: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var sidebarExpanded = false
+    private let sidebarExpanded = false
 
     var body: some View {
         Group {
@@ -50,11 +49,6 @@ struct VaultPanelView: View {
             SidebarView(
                 store: store,
                 isExpanded: sidebarExpanded,
-                toggleExpanded: {
-                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
-                        sidebarExpanded.toggle()
-                    }
-                },
                 openSettings: openSettings
             )
             .frame(width: sidebarExpanded ? 156 : 56)
@@ -102,7 +96,6 @@ struct VaultPanelView: View {
 private struct SidebarView: View {
     @ObservedObject var store: VaultViewModel
     let isExpanded: Bool
-    let toggleExpanded: () -> Void
     let openSettings: () -> Void
 
     var body: some View {
@@ -194,20 +187,8 @@ private struct SidebarView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
-            Button(action: toggleExpanded) {
-                Image(systemName: isExpanded ? "sidebar.left" : "lock.square.stack.fill")
-                    .font(.system(size: isExpanded ? 14 : 18, weight: .semibold))
-                    .foregroundStyle(isExpanded ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tint))
-                    .frame(width: 30, height: 30)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help(isExpanded ? "折叠分类栏" : "展开分类栏")
-        }
-        .padding(.horizontal, isExpanded ? 10 : 13)
-        .padding(.top, 15)
-        .padding(.bottom, 12)
+        Color.clear
+            .frame(height: 57)
     }
 
     private func iconName(for category: VaultCategory) -> String {
