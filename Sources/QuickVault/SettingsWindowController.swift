@@ -19,7 +19,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         super.init()
 
         window.delegate = self
-        window.title = "valuet 设置"
+        window.title = "benri 设置"
         window.isReleasedWhenClosed = false
         window.level = .modalPanel
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]

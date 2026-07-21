@@ -122,13 +122,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let button = item.button {
             button.image = NSImage(
                 systemSymbolName: "lock.square.stack",
-                accessibilityDescription: "valuet"
+                accessibilityDescription: "benri"
             )
-            button.toolTip = "valuet"
+            button.toolTip = "benri"
         }
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "打开 valuet", action: #selector(openPanel), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "打开 benri", action: #selector(openPanel), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "新建记录", action: #selector(newRecord), keyEquivalent: "n"))
         menu.addItem(.separator())
         menu.addItem(makeHotKeyMenuItem())
@@ -144,7 +144,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "打开数据目录", action: #selector(openDataFolder), keyEquivalent: ""))
         menu.addItem(.separator())
         let quitItem = NSMenuItem(
-            title: "退出 valuet",
+            title: "退出 benri",
             action: #selector(quit(_:)),
             keyEquivalent: "q"
         )
@@ -231,7 +231,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for (hotKey, item) in hotKeyMenuItems {
             item.state = hotKey == selected ? .on : .off
         }
-        statusItem?.button?.toolTip = "valuet · \(selected.title)"
+        statusItem?.button?.toolTip = "benri · \(selected.title)"
     }
 
     private func showHotKeyFailure(_ hotKey: GlobalHotKey) {
@@ -245,7 +245,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let mainMenu = NSMenu()
 
         let appItem = NSMenuItem()
-        let appMenu = NSMenu(title: "valuet")
+        let appMenu = NSMenu(title: "benri")
         appMenu.addItem(
             withTitle: "设置…",
             action: #selector(openSettings),
@@ -253,7 +253,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ).target = self
         appMenu.addItem(.separator())
         let hideItem = appMenu.addItem(
-            withTitle: "隐藏 valuet",
+            withTitle: "隐藏 benri",
             action: #selector(NSApplication.hide(_:)),
             keyEquivalent: "h"
         )
@@ -275,7 +275,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         showAllItem.target = NSApp
         appMenu.addItem(.separator())
         let quitItem = appMenu.addItem(
-            withTitle: "退出 valuet",
+            withTitle: "退出 benri",
             action: #selector(quit(_:)),
             keyEquivalent: "q"
         )

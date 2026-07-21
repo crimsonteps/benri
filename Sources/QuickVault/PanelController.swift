@@ -39,7 +39,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.isReleasedWhenClosed = false
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenPrimary]
-        panel.title = "valuet"
+        panel.title = "benri"
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.titlebarSeparatorStyle = .none
@@ -59,8 +59,8 @@ final class PanelController: NSObject, NSWindowDelegate {
             onEditorDismissed: { [weak self] in self?.editorDidDismiss() }
         )
         panel.contentView = NSHostingView(rootView: rootView)
-        shouldPositionOnNextShow = !panel.setFrameUsingName("valuet.mainWindow")
-        panel.setFrameAutosaveName("valuet.mainWindow")
+        shouldPositionOnNextShow = !panel.setFrameUsingName("benri.mainWindow")
+        panel.setFrameAutosaveName("benri.mainWindow")
 
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self,
