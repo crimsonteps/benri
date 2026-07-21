@@ -7,6 +7,7 @@ struct VaultPanelView: View {
     @ObservedObject var settings: AppSettings
     let openSettings: () -> Void
     let onClose: () -> Void
+    let onEditorDismissed: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var sidebarExpanded = false
@@ -32,10 +33,10 @@ struct VaultPanelView: View {
             store.ensureSelection()
         }
         .onExitCommand(perform: onClose)
-        .sheet(item: $store.recordEditor) { context in
+        .sheet(item: $store.recordEditor, onDismiss: onEditorDismissed) { context in
             RecordEditorView(store: store, context: context)
         }
-        .sheet(item: $store.categoryEditor) { context in
+        .sheet(item: $store.categoryEditor, onDismiss: onEditorDismissed) { context in
             CategoryEditorView(store: store, context: context)
         }
         .alert(item: $store.alert) { alert in

@@ -37,6 +37,7 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 final class AppSettings: ObservableObject {
     private static let appearanceDefaultsKey = "appearanceMode"
     private static let hotKeyDefaultsKey = "globalHotKey"
+    private static let menuBarIconDefaultsKey = "showsMenuBarIcon"
 
     @Published var appearanceMode: AppearanceMode {
         didSet {
@@ -55,6 +56,14 @@ final class AppSettings: ObservableObject {
         }
     }
     @Published var hotKeyError: String?
+    @Published var showsMenuBarIcon: Bool {
+        didSet {
+            UserDefaults.standard.set(
+                showsMenuBarIcon,
+                forKey: Self.menuBarIconDefaultsKey
+            )
+        }
+    }
 
     init() {
         appearanceMode = UserDefaults.standard
@@ -65,5 +74,8 @@ final class AppSettings: ObservableObject {
             .string(forKey: Self.hotKeyDefaultsKey)
             .flatMap(GlobalHotKey.init(rawValue:))
             ?? .optionSpace
+        showsMenuBarIcon = UserDefaults.standard.object(forKey: Self.menuBarIconDefaultsKey) == nil
+            ? true
+            : UserDefaults.standard.bool(forKey: Self.menuBarIconDefaultsKey)
     }
 }

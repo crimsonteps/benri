@@ -17,6 +17,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let store: VaultViewModel
     private var keyMonitor: Any?
     private var shouldPositionOnNextShow = true
+    private var shouldHideAfterEditorDismissal = false
 
     init(
         store: VaultViewModel,
@@ -51,7 +52,8 @@ final class PanelController: NSObject, NSWindowDelegate {
             store: store,
             settings: settings,
             openSettings: openSettings,
-            onClose: { [weak self] in self?.hide() }
+            onClose: { [weak self] in self?.hide() },
+            onEditorDismissed: { [weak self] in self?.editorDidDismiss() }
         )
         panel.contentView = NSHostingView(rootView: rootView)
         shouldPositionOnNextShow = !panel.setFrameUsingName("valuet.mainWindow")
@@ -142,7 +144,12 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func toggle() {
         if panel.isVisible && !panel.isMiniaturized {
-            hide()
+            if store.recordEditor != nil || store.categoryEditor != nil {
+                shouldHideAfterEditorDismissal = true
+                store.dismissEditors()
+            } else {
+                hide()
+            }
         } else {
             show()
         }
@@ -184,6 +191,12 @@ final class PanelController: NSObject, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         hide()
         return false
+    }
+
+    private func editorDidDismiss() {
+        guard shouldHideAfterEditorDismissal else { return }
+        shouldHideAfterEditorDismissal = false
+        hide()
     }
 
     private func positionPanel() {

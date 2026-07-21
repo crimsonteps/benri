@@ -30,7 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }()
     private var panelController: PanelController!
     private var hotKeyManager: HotKeyManager!
-    private var statusItem: NSStatusItem!
+    private var statusItem: NSStatusItem?
     private var settingsWindowController: SettingsWindowController!
     private var hotKeyMenuItems: [GlobalHotKey: NSMenuItem] = [:]
     private var hotKeyFailureItem: NSMenuItem?
@@ -49,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settings: settings,
             selectHotKey: { [weak self] hotKey in self?.applyHotKey(hotKey) }
         )
-        configureStatusItem()
+        observeMenuBarIconVisibility()
 
         hotKeyManager = HotKeyManager { [weak self] in
             self?.panelController.toggle()
@@ -108,8 +108,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func configureStatusItem() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        if let button = statusItem.button {
+        guard statusItem == nil else { return }
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem = item
+        if let button = item.button {
             button.image = NSImage(
                 systemSymbolName: "lock.square.stack",
                 accessibilityDescription: "valuet"
@@ -138,7 +140,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for item in menu.items {
             item.target = self
         }
-        statusItem.menu = menu
+        item.menu = menu
+        updateHotKeyMenu(selected: settings.globalHotKey)
+
+        if let hotKeyError = settings.hotKeyError {
+            failureItem.title = hotKeyError
+            failureItem.isHidden = false
+        }
+    }
+
+    private func observeMenuBarIconVisibility() {
+        settings.$showsMenuBarIcon
+            .removeDuplicates()
+            .sink { [weak self] isVisible in
+                self?.setMenuBarIconVisible(isVisible)
+            }
+            .store(in: &cancellables)
+    }
+
+    private func setMenuBarIconVisible(_ isVisible: Bool) {
+        if isVisible {
+            configureStatusItem()
+            return
+        }
+
+        if let statusItem {
+            NSStatusBar.system.removeStatusItem(statusItem)
+        }
+        statusItem = nil
+        hotKeyMenuItems.removeAll()
+        hotKeyFailureItem = nil
     }
 
     private func makeHotKeyMenuItem() -> NSMenuItem {
@@ -186,7 +217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for (hotKey, item) in hotKeyMenuItems {
             item.state = hotKey == selected ? .on : .off
         }
-        statusItem.button?.toolTip = "valuet · \(selected.title)"
+        statusItem?.button?.toolTip = "valuet · \(selected.title)"
     }
 
     private func showHotKeyFailure(_ hotKey: GlobalHotKey) {

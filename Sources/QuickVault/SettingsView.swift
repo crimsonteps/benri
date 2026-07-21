@@ -29,6 +29,14 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                Section("菜单栏") {
+                    Toggle("显示菜单栏图标", isOn: $settings.showsMenuBarIcon)
+
+                    Text("隐藏后仍可通过全局快捷键唤起 valuet。")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+
                 Section("快捷键") {
                     Picker(
                         "唤起 valuet",

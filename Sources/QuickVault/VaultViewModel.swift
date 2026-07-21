@@ -198,6 +198,11 @@ final class VaultViewModel: ObservableObject {
         categoryEditor = CategoryEditorContext(categoryID: id)
     }
 
+    func dismissEditors() {
+        recordEditor = nil
+        categoryEditor = nil
+    }
+
     func saveRecord(
         id: UUID?,
         name: String,
