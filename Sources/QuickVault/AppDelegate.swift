@@ -94,6 +94,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindowController.show()
     }
 
+    @objc private func closeFrontWindow(_ sender: Any?) {
+        let window = NSApp.keyWindow
+            ?? NSApp.mainWindow
+            ?? NSApp.orderedWindows.first { $0.isVisible && $0.styleMask.contains(.closable) }
+        window?.performClose(sender)
+    }
+
     @objc private func quit(_ sender: Any?) {
         store.flushPendingRecordSave()
         NSApplication.shared.terminate(self)
@@ -245,6 +252,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             keyEquivalent: ","
         ).target = self
         appMenu.addItem(.separator())
+        let hideItem = appMenu.addItem(
+            withTitle: "隐藏 valuet",
+            action: #selector(NSApplication.hide(_:)),
+            keyEquivalent: "h"
+        )
+        hideItem.target = NSApp
+
+        let hideOthersItem = appMenu.addItem(
+            withTitle: "隐藏其他应用",
+            action: #selector(NSApplication.hideOtherApplications(_:)),
+            keyEquivalent: "h"
+        )
+        hideOthersItem.keyEquivalentModifierMask = [.command, .option]
+        hideOthersItem.target = NSApp
+
+        let showAllItem = appMenu.addItem(
+            withTitle: "全部显示",
+            action: #selector(NSApplication.unhideAllApplications(_:)),
+            keyEquivalent: ""
+        )
+        showAllItem.target = NSApp
+        appMenu.addItem(.separator())
         let quitItem = appMenu.addItem(
             withTitle: "退出 valuet",
             action: #selector(quit(_:)),
@@ -253,6 +282,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         quitItem.target = self
         appItem.submenu = appMenu
         mainMenu.addItem(appItem)
+
+        let fileItem = NSMenuItem()
+        let fileMenu = NSMenu(title: "文件")
+        fileMenu.addItem(
+            withTitle: "新建记录",
+            action: #selector(newRecord),
+            keyEquivalent: "n"
+        ).target = self
+        fileMenu.addItem(.separator())
+        fileMenu.addItem(
+            withTitle: "关闭窗口",
+            action: #selector(closeFrontWindow(_:)),
+            keyEquivalent: "w"
+        ).target = self
+        fileItem.submenu = fileMenu
+        mainMenu.addItem(fileItem)
 
         let editItem = NSMenuItem()
         let editMenu = NSMenu(title: "编辑")
@@ -272,6 +317,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editMenu.addItem(withTitle: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editItem.submenu = editMenu
         mainMenu.addItem(editItem)
+
+        let windowItem = NSMenuItem()
+        let windowMenu = NSMenu(title: "窗口")
+        windowMenu.addItem(
+            withTitle: "最小化",
+            action: #selector(NSWindow.performMiniaturize(_:)),
+            keyEquivalent: "m"
+        )
+        windowMenu.addItem(
+            withTitle: "缩放",
+            action: #selector(NSWindow.performZoom(_:)),
+            keyEquivalent: ""
+        )
+        let fullScreenItem = windowMenu.addItem(
+            withTitle: "进入全屏幕",
+            action: #selector(NSWindow.toggleFullScreen(_:)),
+            keyEquivalent: "f"
+        )
+        fullScreenItem.keyEquivalentModifierMask = [.command, .control]
+        windowItem.submenu = windowMenu
+        mainMenu.addItem(windowItem)
+        NSApp.windowsMenu = windowMenu
 
         NSApp.mainMenu = mainMenu
     }
