@@ -80,6 +80,7 @@ struct RecordEditorView: View {
                         .padding(5)
                         .frame(minHeight: 140, maxHeight: .infinity)
                         .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
+                        .background(ScrollIndicatorHider(updateToken: content.utf16.count))
                         .overlay {
                             RoundedRectangle(cornerRadius: 12)
                                 .stroke(Color.primary.opacity(0.1), lineWidth: 1)

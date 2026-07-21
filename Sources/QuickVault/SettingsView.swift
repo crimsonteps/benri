@@ -68,6 +68,7 @@ struct SettingsView: View {
                 }
             }
             .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
         }
         .padding(24)
         .frame(width: 460, height: 580)
