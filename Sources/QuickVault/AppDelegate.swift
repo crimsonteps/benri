@@ -67,7 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidResignActive(_ notification: Notification) {
-        panelController.hide()
+        panelController.hide(restoringPreviousApplication: false)
     }
 
     func applicationShouldHandleReopen(

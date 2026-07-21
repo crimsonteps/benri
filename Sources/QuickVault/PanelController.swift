@@ -18,6 +18,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var keyMonitor: Any?
     private var shouldPositionOnNextShow = true
     private var shouldHideAfterEditorDismissal = false
+    private var previousApplication: NSRunningApplication?
 
     init(
         store: VaultViewModel,
@@ -52,7 +53,9 @@ final class PanelController: NSObject, NSWindowDelegate {
             store: store,
             settings: settings,
             openSettings: openSettings,
-            onClose: { [weak self] in self?.hide() },
+            onClose: { [weak self] in
+                self?.hide(restoringPreviousApplication: true)
+            },
             onEditorDismissed: { [weak self] in self?.editorDidDismiss() }
         )
         panel.contentView = NSHostingView(rootView: rootView)
@@ -122,7 +125,7 @@ final class PanelController: NSObject, NSWindowDelegate {
                 }
                 if self.store.keyboardPane != .categories,
                    self.store.copySelectedRecord() {
-                    self.hide()
+                    self.hide(restoringPreviousApplication: true)
                     return nil
                 }
                 return event
@@ -148,7 +151,7 @@ final class PanelController: NSObject, NSWindowDelegate {
                 shouldHideAfterEditorDismissal = true
                 store.dismissEditors()
             } else {
-                hide()
+                hide(restoringPreviousApplication: true)
             }
         } else {
             show()
@@ -156,6 +159,13 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func show() {
+        if !panel.isVisible,
+           let frontmostApplication = NSWorkspace.shared.frontmostApplication,
+           frontmostApplication.processIdentifier
+               != NSRunningApplication.current.processIdentifier {
+            previousApplication = frontmostApplication
+        }
+
         if shouldPositionOnNextShow {
             positionPanel()
             shouldPositionOnNextShow = false
@@ -182,21 +192,34 @@ final class PanelController: NSObject, NSWindowDelegate {
         store.beginNewRecord()
     }
 
-    func hide() {
+    func hide(restoringPreviousApplication shouldRestore: Bool) {
         guard panel.attachedSheet == nil else { return }
         store.flushPendingRecordSave()
         panel.orderOut(nil)
+
+        guard shouldRestore, let previousApplication else {
+            if !shouldRestore {
+                previousApplication = nil
+            }
+            return
+        }
+
+        self.previousApplication = nil
+        DispatchQueue.main.async {
+            guard !previousApplication.isTerminated else { return }
+            previousApplication.activate(options: [.activateIgnoringOtherApps])
+        }
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        hide()
+        hide(restoringPreviousApplication: true)
         return false
     }
 
     private func editorDidDismiss() {
         guard shouldHideAfterEditorDismissal else { return }
         shouldHideAfterEditorDismissal = false
-        hide()
+        hide(restoringPreviousApplication: true)
     }
 
     private func positionPanel() {
