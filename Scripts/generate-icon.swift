@@ -61,34 +61,62 @@ func renderIcon(pixels: Int) throws -> Data {
         xRadius: CGFloat(pixels) * 0.22,
         yRadius: CGFloat(pixels) * 0.22
     )
-    let gradient = NSGradient(
-        starting: NSColor(srgbRed: 0.16, green: 0.46, blue: 0.92, alpha: 1),
-        ending: NSColor(srgbRed: 0.08, green: 0.25, blue: 0.63, alpha: 1)
-    )!
-    gradient.draw(in: outerPath, angle: -55)
+    let blue = NSColor(srgbRed: 0.46, green: 0.68, blue: 0.93, alpha: 1)
+    blue.setFill()
+    outerPath.fill()
 
-    NSColor.white.withAlphaComponent(0.16).setStroke()
-    outerPath.lineWidth = max(1, CGFloat(pixels) * 0.01)
-    outerPath.stroke()
-
-    let configuration = NSImage.SymbolConfiguration(
-        pointSize: CGFloat(pixels) * 0.45,
-        weight: .semibold
+    let markSize = CGFloat(pixels) * 0.30
+    let markRect = NSRect(
+        x: (CGFloat(pixels) - markSize) / 2,
+        y: (CGFloat(pixels) - markSize) / 2 + CGFloat(pixels) * 0.01,
+        width: markSize,
+        height: markSize
     )
-    let palette = NSImage.SymbolConfiguration(paletteColors: [.white])
-    if let symbol = NSImage(
-        systemSymbolName: "lock.square.stack.fill",
-        accessibilityDescription: nil
-    )?.withSymbolConfiguration(configuration.applying(palette)) {
-        let symbolSize = symbol.size
-        let symbolRect = NSRect(
-            x: (CGFloat(pixels) - symbolSize.width) / 2,
-            y: (CGFloat(pixels) - symbolSize.height) / 2,
-            width: symbolSize.width,
-            height: symbolSize.height
+    let markPath = NSBezierPath(
+        roundedRect: markRect,
+        xRadius: markSize * 0.24,
+        yRadius: markSize * 0.24
+    )
+    NSColor.white.setFill()
+    markPath.fill()
+
+    let slotRect = NSRect(
+        x: markRect.midX - markSize * 0.13,
+        y: markRect.minY + markSize * 0.60,
+        width: markSize * 0.26,
+        height: max(1, markSize * 0.055)
+    )
+    let slotPath = NSBezierPath(
+        roundedRect: slotRect,
+        xRadius: slotRect.height / 2,
+        yRadius: slotRect.height / 2
+    )
+    blue.setFill()
+    slotPath.fill()
+
+    let smilePath = NSBezierPath()
+    smilePath.move(to: NSPoint(
+        x: markRect.midX - markSize * 0.13,
+        y: markRect.minY + markSize * 0.37
+    ))
+    smilePath.curve(
+        to: NSPoint(
+            x: markRect.midX + markSize * 0.13,
+            y: markRect.minY + markSize * 0.37
+        ),
+        controlPoint1: NSPoint(
+            x: markRect.midX - markSize * 0.07,
+            y: markRect.minY + markSize * 0.27
+        ),
+        controlPoint2: NSPoint(
+            x: markRect.midX + markSize * 0.07,
+            y: markRect.minY + markSize * 0.27
         )
-        symbol.draw(in: symbolRect)
-    }
+    )
+    smilePath.lineWidth = max(1, CGFloat(pixels) * 0.012)
+    smilePath.lineCapStyle = .round
+    blue.setStroke()
+    smilePath.stroke()
 
     guard let png = bitmap.representation(using: .png, properties: [:]) else {
         throw CocoaError(.fileWriteUnknown)
