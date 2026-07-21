@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import Carbon.HIToolbox
 import SwiftUI
 
@@ -19,6 +20,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var shouldPositionOnNextShow = true
     private var shouldHideAfterEditorDismissal = false
     private var previousApplication: NSRunningApplication?
+    private var previousFocusedElement: AXUIElement?
 
     init(
         store: VaultViewModel,
@@ -125,7 +127,10 @@ final class PanelController: NSObject, NSWindowDelegate {
                 }
                 if self.store.keyboardPane != .categories,
                    self.store.copySelectedRecord() {
-                    self.hide(restoringPreviousApplication: true)
+                    self.hide(
+                        restoringPreviousApplication: true,
+                        pastingIntoPreviousApplication: true
+                    )
                     return nil
                 }
                 return event
@@ -159,11 +164,16 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func show() {
-        if !panel.isVisible,
-           let frontmostApplication = NSWorkspace.shared.frontmostApplication,
-           frontmostApplication.processIdentifier
-               != NSRunningApplication.current.processIdentifier {
-            previousApplication = frontmostApplication
+        if !panel.isVisible {
+            previousApplication = nil
+            previousFocusedElement = nil
+
+            if let frontmostApplication = NSWorkspace.shared.frontmostApplication,
+               frontmostApplication.processIdentifier
+                   != NSRunningApplication.current.processIdentifier {
+                previousApplication = frontmostApplication
+                previousFocusedElement = focusedUIElement()
+            }
         }
 
         if shouldPositionOnNextShow {
@@ -192,7 +202,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         store.beginNewRecord()
     }
 
-    func hide(restoringPreviousApplication shouldRestore: Bool) {
+    func hide(
+        restoringPreviousApplication shouldRestore: Bool,
+        pastingIntoPreviousApplication shouldPaste: Bool = false
+    ) {
         guard panel.attachedSheet == nil else { return }
         store.flushPendingRecordSave()
         panel.orderOut(nil)
@@ -201,13 +214,23 @@ final class PanelController: NSObject, NSWindowDelegate {
             if !shouldRestore {
                 previousApplication = nil
             }
+            previousFocusedElement = nil
             return
         }
 
+        let focusedElement = previousFocusedElement
         self.previousApplication = nil
-        DispatchQueue.main.async {
+        previousFocusedElement = nil
+        let canPaste = !shouldPaste || accessibilityPermissionGranted(prompt: true)
+
+        DispatchQueue.main.async { [weak self] in
             guard !previousApplication.isTerminated else { return }
             previousApplication.activate(options: [.activateIgnoringOtherApps])
+
+            guard shouldPaste, canPaste else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                self?.restoreFocusAndPaste(focusedElement)
+            }
         }
     }
 
@@ -220,6 +243,58 @@ final class PanelController: NSObject, NSWindowDelegate {
         guard shouldHideAfterEditorDismissal else { return }
         shouldHideAfterEditorDismissal = false
         hide(restoringPreviousApplication: true)
+    }
+
+    private func focusedUIElement() -> AXUIElement? {
+        guard AXIsProcessTrusted() else { return nil }
+
+        let systemWideElement = AXUIElementCreateSystemWide()
+        var focusedElement: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            systemWideElement,
+            kAXFocusedUIElementAttribute as CFString,
+            &focusedElement
+        ) == .success else {
+            return nil
+        }
+        return (focusedElement as! AXUIElement)
+    }
+
+    private func accessibilityPermissionGranted(prompt: Bool) -> Bool {
+        guard prompt else { return AXIsProcessTrusted() }
+        let options = [
+            kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true
+        ] as CFDictionary
+        return AXIsProcessTrustedWithOptions(options)
+    }
+
+    private func restoreFocusAndPaste(_ focusedElement: AXUIElement?) {
+        if let focusedElement {
+            AXUIElementSetAttributeValue(
+                focusedElement,
+                kAXFocusedAttribute as CFString,
+                kCFBooleanTrue
+            )
+        }
+
+        guard
+            let source = CGEventSource(stateID: .hidSystemState),
+            let keyDown = CGEvent(
+                keyboardEventSource: source,
+                virtualKey: CGKeyCode(kVK_ANSI_V),
+                keyDown: true
+            ),
+            let keyUp = CGEvent(
+                keyboardEventSource: source,
+                virtualKey: CGKeyCode(kVK_ANSI_V),
+                keyDown: false
+            )
+        else { return }
+
+        keyDown.flags = .maskCommand
+        keyUp.flags = .maskCommand
+        keyDown.post(tap: .cghidEventTap)
+        keyUp.post(tap: .cghidEventTap)
     }
 
     private func positionPanel() {
