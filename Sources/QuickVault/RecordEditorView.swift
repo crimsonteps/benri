@@ -36,13 +36,8 @@ struct RecordEditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(isEditing ? "编辑记录" : "新建记录")
-                        .font(.system(size: 19, weight: .bold))
-                    Text("名称用于搜索，内容可以填写任意文本")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
+                Text(isEditing ? "编辑记录" : "新建记录")
+                    .font(.system(size: 19, weight: .bold))
                 Spacer()
             }
             .padding(16)
@@ -78,37 +73,17 @@ struct RecordEditorView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 7) {
-                    HStack {
-                        Text("内容")
-                            .font(.system(size: 12, weight: .semibold))
-                        Spacer()
-                        Text("支持多行文本、网址和账号信息")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.tertiary)
-                    }
-
-                    ZStack(alignment: .topLeading) {
-                        if content.isEmpty {
-                            Text("输入任意内容，例如网址、手机号、账号密码或备注")
-                                .font(.system(size: 13))
-                                .foregroundStyle(.tertiary)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 9)
-                                .allowsHitTesting(false)
+                    TextEditor(text: $content)
+                        .font(.system(size: 13))
+                        .lineSpacing(4)
+                        .scrollContentBackground(.hidden)
+                        .padding(5)
+                        .frame(minHeight: 140, maxHeight: .infinity)
+                        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
                         }
-
-                        TextEditor(text: $content)
-                            .font(.system(size: 13))
-                            .lineSpacing(4)
-                            .scrollContentBackground(.hidden)
-                            .padding(5)
-                    }
-                    .frame(minHeight: 140, maxHeight: .infinity)
-                    .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.primary.opacity(0.1), lineWidth: 1)
-                    }
                 }
             }
             .padding(16)

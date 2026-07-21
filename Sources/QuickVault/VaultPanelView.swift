@@ -159,13 +159,14 @@ private struct SidebarView: View {
     private var bottomActions: some View {
         Group {
             if isExpanded {
-                HStack(spacing: 3) {
-                    newCategoryButton(showLabel: true)
+                HStack(spacing: 2) {
+                    newCategoryButton
+                    Spacer(minLength: 0)
                     settingsButton
                 }
             } else {
                 VStack(spacing: 2) {
-                    newCategoryButton(showLabel: false)
+                    newCategoryButton
                     settingsButton
                 }
             }
@@ -176,17 +177,10 @@ private struct SidebarView: View {
         .padding(7)
     }
 
-    private func newCategoryButton(showLabel: Bool) -> some View {
+    private var newCategoryButton: some View {
         Button(action: store.beginNewCategory) {
-            Group {
-                if showLabel {
-                    Label("新建", systemImage: "plus")
-                } else {
-                    Image(systemName: "plus")
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 30)
+            Image(systemName: "plus")
+                .frame(width: 28, height: 30)
         }
         .help("新建分类")
     }
@@ -210,13 +204,6 @@ private struct SidebarView: View {
             }
             .buttonStyle(.plain)
             .help(isExpanded ? "折叠分类栏" : "展开分类栏")
-
-            if isExpanded {
-                Text("valuet")
-                    .font(.system(size: 15, weight: .semibold))
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-            }
         }
         .padding(.horizontal, isExpanded ? 10 : 13)
         .padding(.top, 15)
