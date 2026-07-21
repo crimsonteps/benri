@@ -25,8 +25,7 @@ struct VaultPanelView: View {
         }
         .frame(minWidth: 820, minHeight: 520)
         .background {
-            Color.clear
-                .quickVaultGlass(cornerRadius: 0)
+            Color(nsColor: .windowBackgroundColor)
                 .ignoresSafeArea()
         }
         .onAppear {

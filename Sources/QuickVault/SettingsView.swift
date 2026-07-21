@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SettingsView: View {
@@ -62,6 +63,10 @@ struct SettingsView: View {
         }
         .padding(24)
         .frame(width: 460, height: 580)
+        .background {
+            Color(nsColor: .windowBackgroundColor)
+                .ignoresSafeArea()
+        }
         .preferredColorScheme(settings.appearanceMode.colorScheme)
     }
 }
