@@ -155,6 +155,17 @@ public enum VaultDefaults {
     ]
 }
 
+public enum VaultPayloadError: Error, LocalizedError, Equatable, Sendable {
+    case unsupportedFormat(Int)
+
+    public var errorDescription: String? {
+        switch self {
+        case let .unsupportedFormat(version):
+            return "当前版本无法读取格式版本为 \(version) 的保险库。"
+        }
+    }
+}
+
 public struct VaultPayload: Codable, Equatable, Sendable {
     public static let currentFormatVersion = 3
 
@@ -172,6 +183,35 @@ public struct VaultPayload: Codable, Equatable, Sendable {
         self.records = records
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case formatVersion
+        case categories
+        case records
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedFormatVersion = try container.decode(Int.self, forKey: .formatVersion)
+        guard decodedFormatVersion <= VaultPayload.currentFormatVersion else {
+            throw VaultPayloadError.unsupportedFormat(decodedFormatVersion)
+        }
+
+        formatVersion = decodedFormatVersion
+        categories = try container.decode([VaultCategory].self, forKey: .categories)
+        records = try container.decode([VaultRecord].self, forKey: .records)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        guard formatVersion <= VaultPayload.currentFormatVersion else {
+            throw VaultPayloadError.unsupportedFormat(formatVersion)
+        }
+
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(formatVersion, forKey: .formatVersion)
+        try container.encode(categories, forKey: .categories)
+        try container.encode(records, forKey: .records)
+    }
+
     public static var empty: VaultPayload {
         VaultPayload()
     }
@@ -182,9 +222,20 @@ public struct VaultPayload: Codable, Equatable, Sendable {
 
     @discardableResult
     public mutating func migrateToCurrentFormat() -> Bool {
-        guard formatVersion < VaultPayload.currentFormatVersion else { return false }
-        formatVersion = VaultPayload.currentFormatVersion
-        return true
+        guard formatVersion <= VaultPayload.currentFormatVersion else { return false }
+
+        let existingCategoryIDs = Set(categories.map(\.id))
+        let missingBuiltInCategories = VaultDefaults.categories.filter { category in
+            !existingCategoryIDs.contains(category.id)
+        }
+        let requiresVersionMigration = formatVersion < VaultPayload.currentFormatVersion
+
+        categories.append(contentsOf: missingBuiltInCategories)
+        if requiresVersionMigration {
+            formatVersion = VaultPayload.currentFormatVersion
+        }
+
+        return requiresVersionMigration || !missingBuiltInCategories.isEmpty
     }
 
     public func filteredRecords(categoryID: UUID?, query: String) -> [VaultRecord] {

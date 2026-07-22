@@ -1,4 +1,4 @@
-.PHONY: build test app run clean
+.PHONY: build test app release run clean
 
 build:
 	swift build
@@ -8,6 +8,9 @@ test:
 
 app:
 	./Scripts/package-app.sh
+
+release:
+	./Scripts/create-release.sh
 
 run: app
 	open dist/Benri.app

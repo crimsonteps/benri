@@ -107,6 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = item
         if let button = item.button {
             button.image = makeStatusItemImage()
+            button.imageScaling = .scaleProportionallyDown
             button.toolTip = "Benri"
         }
 
@@ -144,55 +145,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func makeStatusItemImage() -> NSImage {
-        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
-            let scale = rect.width / 18
+        let size = NSSize(width: 18, height: 18)
+        guard let appIcon = NSApp.applicationIconImage else {
+            return NSImage(size: size)
+        }
 
-            let faceRect = NSRect(
-                x: 1.2 * scale,
-                y: 1.2 * scale,
-                width: 15.6 * scale,
-                height: 15.6 * scale
-            )
-            NSColor.black.setFill()
-            NSBezierPath(
-                roundedRect: faceRect,
-                xRadius: 4.2 * scale,
-                yRadius: 4.2 * scale
-            ).fill()
-
-            guard let context = NSGraphicsContext.current?.cgContext else { return false }
-            context.saveGState()
-            context.setBlendMode(.clear)
-
-            for x in [5.0, 11.2] {
-                let eyeRect = NSRect(
-                    x: x * scale,
-                    y: 9.1 * scale,
-                    width: 1.8 * scale,
-                    height: 4.2 * scale
-                )
-                NSBezierPath(
-                    roundedRect: eyeRect,
-                    xRadius: eyeRect.width / 2,
-                    yRadius: eyeRect.width / 2
-                ).fill()
-            }
-
-            let smile = NSBezierPath()
-            smile.move(to: NSPoint(x: 5.0 * scale, y: 7.0 * scale))
-            smile.curve(
-                to: NSPoint(x: 13.0 * scale, y: 7.0 * scale),
-                controlPoint1: NSPoint(x: 6.8 * scale, y: 5.0 * scale),
-                controlPoint2: NSPoint(x: 11.2 * scale, y: 5.0 * scale)
-            )
-            smile.lineWidth = 1.7 * scale
-            smile.lineCapStyle = .round
-            NSColor.black.setStroke()
-            smile.stroke()
-            context.restoreGState()
+        let image = NSImage(size: size, flipped: false) { rect in
+            appIcon.draw(in: rect)
             return true
         }
-        image.isTemplate = true
+        image.isTemplate = false
         image.accessibilityDescription = "Benri"
         return image
     }

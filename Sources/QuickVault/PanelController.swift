@@ -30,10 +30,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var isHidingPanel = false
     private var previousApplication: NSRunningApplication?
     private var previousFocusedElement: AXUIElement?
-    private var activationObserver: NSObjectProtocol?
-    private var activationFallbackWorkItem: DispatchWorkItem?
-    private var pendingPasteApplication: NSRunningApplication?
-    private var pendingPasteFocusedElement: AXUIElement?
+    private var pasteTask: Task<Void, Never>?
+    private var pasteTransactionID: UInt64 = 0
 
     init(
         store: VaultViewModel,
@@ -173,6 +171,7 @@ final class PanelController: NSObject, NSWindowDelegate {
 
         let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
         if event.keyCode == kVK_Escape, modifiers.isEmpty {
+            guard store.recordEditor != nil else { return false }
             NotificationCenter.default.post(name: .quickVaultCancelRecordEditor, object: nil)
             return true
         }
@@ -191,10 +190,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         if let keyMonitor {
             NSEvent.removeMonitor(keyMonitor)
         }
-        if let activationObserver {
-            NSWorkspace.shared.notificationCenter.removeObserver(activationObserver)
-        }
-        activationFallbackWorkItem?.cancel()
+        pasteTask?.cancel()
     }
 
     var isVisible: Bool {
@@ -215,6 +211,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func show() {
+        cancelPendingPaste()
+
         if !panel.isVisible {
             previousApplication = nil
             previousFocusedElement = nil
@@ -239,6 +237,13 @@ final class PanelController: NSObject, NSWindowDelegate {
             panel.deminiaturize(nil)
         }
         panel.orderFrontRegardless()
+
+        if let attachedSheet = panel.attachedSheet {
+            attachedSheet.orderFrontRegardless()
+            attachedSheet.makeKey()
+            return
+        }
+
         panel.makeKeyAndOrderFront(nil)
         panel.makeKey()
 
@@ -262,10 +267,27 @@ final class PanelController: NSObject, NSWindowDelegate {
         restoringPreviousApplication shouldRestore: Bool,
         pastingIntoPreviousApplication shouldPaste: Bool = false
     ) {
-        guard panel.attachedSheet == nil, !isHidingPanel else { return }
+        cancelPendingPaste()
+        guard !isHidingPanel else { return }
         isHidingPanel = true
         defer { isHidingPanel = false }
         store.flushPendingRecordSave()
+
+        if let attachedSheet = panel.attachedSheet {
+            let applicationToRestore = shouldRestore ? previousApplication : nil
+            previousApplication = nil
+            previousFocusedElement = nil
+            attachedSheet.orderOut(nil)
+            panel.orderOut(nil)
+
+            if let applicationToRestore, !applicationToRestore.isTerminated {
+                applicationToRestore.activate(
+                    options: [.activateAllWindows, .activateIgnoringOtherApps]
+                )
+            }
+            return
+        }
+
         panel.orderOut(nil)
 
         guard shouldRestore, let previousApplication else {
@@ -284,29 +306,23 @@ final class PanelController: NSObject, NSWindowDelegate {
             "Hiding panel paste=\(shouldPaste, privacy: .public) targetPID=\(previousApplication.processIdentifier, privacy: .public) targetActive=\(previousApplication.isActive, privacy: .public) accessibility=\(canPaste, privacy: .public)"
         )
 
-        DispatchQueue.main.async { [weak self] in
-            guard !previousApplication.isTerminated else { return }
-            guard shouldPaste, canPaste else {
-                previousApplication.activate(
-                    options: [.activateAllWindows, .activateIgnoringOtherApps]
+        guard !previousApplication.isTerminated else { return }
+        guard shouldPaste, canPaste else {
+            if shouldPaste, !canPaste {
+                pasteLogger.error(
+                    "Accessibility permission unavailable; clipboard copy kept, automatic paste cancelled"
                 )
-                return
             }
-            if previousApplication.isActive {
-                pasteLogger.info("Target stayed active; pasting without app switch")
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-                    self?.restoreFocusAndPaste(
-                        focusedElement,
-                        into: previousApplication
-                    )
-                }
-                return
-            }
-            self?.activateAndPaste(
-                into: previousApplication,
-                focusedElement: focusedElement
+            previousApplication.activate(
+                options: [.activateAllWindows, .activateIgnoringOtherApps]
             )
+            return
         }
+
+        startPasteTransaction(
+            into: previousApplication,
+            focusedElement: focusedElement
+        )
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
@@ -366,104 +382,122 @@ final class PanelController: NSObject, NSWindowDelegate {
         return granted
     }
 
-    private func activateAndPaste(
+    private func startPasteTransaction(
         into application: NSRunningApplication,
         focusedElement: AXUIElement?
     ) {
         cancelPendingPaste()
-        pendingPasteApplication = application
-        pendingPasteFocusedElement = focusedElement
-
-        let notificationCenter = NSWorkspace.shared.notificationCenter
-        activationObserver = notificationCenter.addObserver(
-            forName: NSWorkspace.didActivateApplicationNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            guard
-                let activatedApplication = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
-                    as? NSRunningApplication,
-                activatedApplication.processIdentifier == application.processIdentifier
-            else { return }
-
-            Task { @MainActor [weak self] in
-                pasteLogger.info("Received target activation notification")
-                self?.completePendingPaste()
-            }
-        }
-
-        let fallbackWorkItem = DispatchWorkItem { [weak self] in
+        let transactionID = pasteTransactionID
+        pasteTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            if !application.isActive {
-                application.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+            await self.runPasteTransaction(
+                transactionID: transactionID,
+                application: application,
+                focusedElement: focusedElement
+            )
+            if self.pasteTransactionID == transactionID {
+                self.pasteTask = nil
             }
-            self.completePendingPaste()
-        }
-        activationFallbackWorkItem = fallbackWorkItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: fallbackWorkItem)
-
-        application.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
-        if application.isActive {
-            completePendingPaste()
         }
     }
 
-    private func completePendingPaste() {
-        guard let application = pendingPasteApplication else { return }
-        let focusedElement = pendingPasteFocusedElement
-        cancelPendingPaste()
+    private func runPasteTransaction(
+        transactionID: UInt64,
+        application: NSRunningApplication,
+        focusedElement: AXUIElement?
+    ) async {
+        guard isPasteTransactionCurrent(transactionID), !application.isTerminated else { return }
 
-        let delay = application.isActive ? 0.08 : 0.2
-        if !application.isActive {
+        if !isPasteTargetActive(application) {
             application.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+
+            for _ in 0..<20 {
+                guard await waitForPasteDelay(
+                    nanoseconds: 50_000_000,
+                    transactionID: transactionID
+                ) else { return }
+                if isPasteTargetActive(application) {
+                    break
+                }
+            }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            self?.restoreFocusAndPaste(focusedElement, into: application)
+
+        guard isPasteTargetActive(application) else {
+            pasteLogger.error("Target application did not become active; paste cancelled")
+            return
         }
+
+        guard await waitForPasteDelay(
+            nanoseconds: 80_000_000,
+            transactionID: transactionID
+        ) else { return }
+        guard isPasteTargetActive(application) else {
+            pasteLogger.error("Target application changed before focus restore; paste cancelled")
+            return
+        }
+
+        guard restoreFocus(focusedElement, into: application) else { return }
+
+        guard await waitForPasteDelay(
+            nanoseconds: 50_000_000,
+            transactionID: transactionID
+        ) else { return }
+        guard isPasteTargetActive(application) else {
+            pasteLogger.error("Target application changed before Command-V; paste cancelled")
+            return
+        }
+
+        await postPasteShortcut(
+            into: application,
+            transactionID: transactionID
+        )
     }
 
-    private func cancelPendingPaste() {
-        if let activationObserver {
-            NSWorkspace.shared.notificationCenter.removeObserver(activationObserver)
-        }
-        activationObserver = nil
-        activationFallbackWorkItem?.cancel()
-        activationFallbackWorkItem = nil
-        pendingPasteApplication = nil
-        pendingPasteFocusedElement = nil
-    }
-
-    private func restoreFocusAndPaste(
+    private func restoreFocus(
         _ focusedElement: AXUIElement?,
         into application: NSRunningApplication
-    ) {
-        if let focusedElement {
-            let applicationElement = AXUIElementCreateApplication(
-                application.processIdentifier
+    ) -> Bool {
+        guard isPasteTargetActive(application), let focusedElement else {
+            pasteLogger.error(
+                "No valid captured AX element; clipboard copy kept, automatic paste cancelled"
             )
-            let applicationFocusResult = AXUIElementSetAttributeValue(
-                applicationElement,
-                kAXFocusedUIElementAttribute as CFString,
-                focusedElement
-            )
-            let elementFocusResult = AXUIElementSetAttributeValue(
-                focusedElement,
-                kAXFocusedAttribute as CFString,
-                kCFBooleanTrue
-            )
-            pasteLogger.info(
-                "Focus restore appResult=\(applicationFocusResult.rawValue, privacy: .public) elementResult=\(elementFocusResult.rawValue, privacy: .public)"
-            )
-        } else {
-            pasteLogger.info("No captured AX element; using target app current focus")
+            return false
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            self?.postPasteShortcut()
+        let applicationElement = AXUIElementCreateApplication(
+            application.processIdentifier
+        )
+        let applicationFocusResult = AXUIElementSetAttributeValue(
+            applicationElement,
+            kAXFocusedUIElementAttribute as CFString,
+            focusedElement
+        )
+        let elementFocusResult = AXUIElementSetAttributeValue(
+            focusedElement,
+            kAXFocusedAttribute as CFString,
+            kCFBooleanTrue
+        )
+        pasteLogger.info(
+            "Focus restore appResult=\(applicationFocusResult.rawValue, privacy: .public) elementResult=\(elementFocusResult.rawValue, privacy: .public)"
+        )
+
+        guard applicationFocusResult == .success || elementFocusResult == .success else {
+            pasteLogger.error("Unable to restore captured focus; paste cancelled")
+            return false
         }
+
+        return isPasteTargetActive(application)
     }
 
-    private func postPasteShortcut() {
+    private func postPasteShortcut(
+        into application: NSRunningApplication,
+        transactionID: UInt64
+    ) async {
+        guard isPasteTransactionCurrent(transactionID), isPasteTargetActive(application) else {
+            pasteLogger.error("Paste target is no longer active; Command-V cancelled")
+            return
+        }
+
         guard
             let source = CGEventSource(stateID: .privateState),
             let valueDown = CGEvent(
@@ -477,6 +511,9 @@ final class PanelController: NSObject, NSWindowDelegate {
                 keyDown: false
             )
         else {
+            guard isPasteTransactionCurrent(transactionID), isPasteTargetActive(application) else {
+                return
+            }
             runAppleScriptPaste()
             return
         }
@@ -485,10 +522,44 @@ final class PanelController: NSObject, NSWindowDelegate {
         valueDown.flags = .maskCommand
         valueUp.flags = .maskCommand
         valueDown.post(tap: .cghidEventTap)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+
+        do {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        } catch {
             valueUp.post(tap: .cghidEventTap)
-            pasteLogger.info("Posted Command-V events")
+            return
         }
+
+        valueUp.post(tap: .cghidEventTap)
+        pasteLogger.info("Posted Command-V events")
+    }
+
+    private func waitForPasteDelay(
+        nanoseconds: UInt64,
+        transactionID: UInt64
+    ) async -> Bool {
+        do {
+            try await Task.sleep(nanoseconds: nanoseconds)
+        } catch {
+            return false
+        }
+        return isPasteTransactionCurrent(transactionID)
+    }
+
+    private func isPasteTransactionCurrent(_ transactionID: UInt64) -> Bool {
+        transactionID == pasteTransactionID && !Task.isCancelled
+    }
+
+    private func isPasteTargetActive(_ application: NSRunningApplication) -> Bool {
+        guard !application.isTerminated, application.isActive else { return false }
+        return NSWorkspace.shared.frontmostApplication?.processIdentifier
+            == application.processIdentifier
+    }
+
+    private func cancelPendingPaste() {
+        pasteTransactionID &+= 1
+        pasteTask?.cancel()
+        pasteTask = nil
     }
 
     private func runAppleScriptPaste() {

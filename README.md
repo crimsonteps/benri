@@ -1,92 +1,134 @@
-# Benri
+<p align="center">
+  <img src="Resources/benri-icon-source.png" width="128" height="128" alt="Benri app icon">
+</p>
 
-Benri 是一个只在本机保存数据的 macOS 菜单栏资料面板。默认按 `⌥Space` 唤起，按分类浏览记录，也可以直接根据记录名称搜索。
+<h1 align="center">Benri</h1>
 
-Benri 以菜单栏辅助应用和浮动面板运行，不显示 Dock 图标，也不会出现在 Mission Control 的普通应用窗口列表中。
+<p align="center">
+  A fast, local-first macOS panel for reusable text.<br>
+  Find a note, copy it, and paste it back into your current app without breaking your flow.
+</p>
 
-## 功能
+<p align="center">
+  <a href="README.zh-CN.md">简体中文</a>
+  ·
+  <a href="https://github.com/crimsonteps/quick-vault/releases/latest">Download</a>
+  ·
+  <a href="https://github.com/crimsonteps/quick-vault/issues">Report a bug</a>
+</p>
 
-- 默认折叠的分类栏、记录列表和正文详情
-- 自定义分类，以及个人、工作、服务器、其他四个默认分类
-- 每条记录由名称、分类和一整块自由文本内容组成
-- 内容支持多行文本、网址、手机号、账号密码和备注
-- 正文整体复制，复制内容按 macOS 剪贴板的系统默认方式保留
-- 启动或再次打开应用时直接显示主窗口
-- 主面板以非激活方式显示，不会把当前工作的 App 切到后台
-- 使用上下方向键选择记录，按 `Enter` 复制正文、隐藏窗口并自动粘贴回原输入框
-- 右方向键不再展开额外内容页面；左方向键返回上一栏
-- `⌘←` 进入分类列，分类列使用上下方向键切换
-- 记录列表和内容区域支持右键删除记录
-- 搜索框有内容时，普通左右方向键用于移动文本光标；`⌘←` 和 `⌘→` 始终用于切换栏位
-- 详情页直接编辑正文，输入后自动保存，不需要编辑或保存按钮
-- 记录名称下方显示正文第一行，内容过长时自动省略；分类页不重复显示分类标签
-- `⌘N` 新建记录，`Esc`、点击桌面或切换其他应用隐藏主面板；设置窗口始终置于主面板上方
-- 主页面设置按钮可调整外观和全局唤起快捷键
-- 设置中可以隐藏菜单栏图标，隐藏后仍可使用全局快捷键唤起
-- 可选择并记住 `⌥Space`、`⌃Space`、`⌥⌘Space` 或 `⌃⌥Space`
-- 自定义分类的右键菜单支持重命名和删除，删除后记录会迁移到“其他”
-- 设置页面可选择跟随系统、浅色或深色外观，使用 `⌘,` 快速打开
-- 使用标准 macOS 红黄绿标题栏，仅标题栏区域可以拖动窗口
-- 自动记住主窗口的位置和尺寸
-- 新建和分类编辑弹窗在 macOS 26 使用原生 Liquid Glass，旧系统使用系统 Material 降级
-- 新建记录页支持全键盘操作：分类下拉框使用方向键选择，`⌘S` 或 `⌘Enter` 保存，`Esc` 取消
-- 自动适配 macOS 浅色、深色和降低透明度设置
+<p align="center">
+  <a href="https://github.com/crimsonteps/quick-vault/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/crimsonteps/quick-vault/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-black?logo=apple">
+  <img alt="Swift 6" src="https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white">
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-blue.svg"></a>
+</p>
 
-## 本地安全
+Benri is a lightweight menu bar utility for text you use repeatedly: server commands, account details, addresses, URLs, templates, snippets, and notes. Press a global shortcut, search by title, and press `Return` to copy the selected content and paste it into the app you were using.
 
-- 数据文件：`~/Library/Application Support/QuickVault/vault.qv`，为兼容旧版本保留原目录
-- 数据使用 AES-256-GCM 整体加密
-- 32 字节随机密钥保存在 `~/Library/Application Support/QuickVault/vault.key`
-- 密钥文件权限为 `0600`，避免每次启动要求输入 macOS 登录密码
-- 从旧版本升级时会把原 Keychain 密钥迁移到本地密钥文件，首次升级可能需要最后确认一次
-- 不使用 Touch ID，不进行网络请求，不进行云同步
-- 自动粘贴需要 macOS“辅助功能”权限；未授权时内容仍会保留在剪贴板
-- 数据文件权限为 `0600`，应用目录权限为 `0700`
+Everything stays on your Mac. Benri has no account system, analytics, network requests, cloud service, or third-party runtime dependencies.
 
-如果保险库无法解密，Benri 不会自动覆盖原文件。面板会提供“打开数据目录”和“重置保险库”两个明确操作。
+## Highlights
 
-## 构建和运行
+- Global launcher, configurable as `⌥Space`, `⌃Space`, `⌥⌘Space`, or `⌃⌥Space`
+- Keyboard-first navigation across categories, records, and content
+- Free-form multi-line content with automatic saving
+- Custom categories plus four built-in categories
+- Search by record title
+- Copy-only fallback when Accessibility permission is unavailable
+- Light, dark, reduced-transparency, and macOS 26 Liquid Glass support
+- Local AES-256-GCM encrypted storage
+- No Dock icon, network access, telemetry, or cloud synchronization
 
-本项目只需要 macOS Command Line Tools，不依赖完整 Xcode。
+## Requirements
+
+- macOS 13 Ventura or later
+- Accessibility permission only if you want Benri to paste automatically into another app
+
+## Install
+
+1. Download the latest `Benri-vX.Y.Z-macOS-universal.zip` from [Releases](https://github.com/crimsonteps/quick-vault/releases/latest).
+2. Unzip it and move `Benri.app` to `/Applications`.
+3. Open Benri and optionally grant Accessibility permission when macOS asks.
+
+Community builds are ad-hoc signed unless a release explicitly says it is notarized. On first launch, macOS may require you to Control-click the app, choose **Open**, and confirm once. You can also allow it from **System Settings → Privacy & Security**.
+
+## Keyboard workflow
+
+| Shortcut | Action |
+| --- | --- |
+| Configurable global shortcut | Show or hide Benri |
+| `↑` / `↓` | Move through categories or records |
+| `Return` | Copy the selected record and paste into the previous app |
+| `⌘←` / `⌘→` | Move between columns |
+| `⌘N` | Create a record |
+| `⌘S` or `⌘Return` | Save in the record editor |
+| `⌘,` | Open Settings |
+| `Esc` | Close the editor or hide the panel |
+
+If automatic paste is not permitted or cannot complete, the content remains on the system clipboard so you can paste it manually.
+
+## Privacy and security
+
+Benri stores its data in the legacy-compatible QuickVault directory:
+
+```text
+~/Library/Application Support/QuickVault/vault.qv
+~/Library/Application Support/QuickVault/vault.key
+```
+
+- The vault is encrypted as one AES-256-GCM payload.
+- The randomly generated 32-byte key and vault file are both restricted to the current user with `0600` permissions; the containing directory uses `0700`.
+- Benri does not send data over the network.
+- Benri never silently replaces a vault that it cannot decrypt.
+- Resetting the vault permanently deletes the encrypted data and its local key.
+
+The key is stored under the same macOS user account to avoid a password or Keychain prompt on every launch. This protects data at rest from casual disclosure, but it does **not** protect against software or a person that already has access to your logged-in account. Content copied from Benri also enters the macOS clipboard and follows normal system clipboard behavior. Benri is a convenience utility, not a replacement for a dedicated password manager.
+
+Please report security issues through [GitHub's private security advisory form](https://github.com/crimsonteps/quick-vault/security/advisories/new), not a public issue. See [SECURITY.md](SECURITY.md).
+
+## Build from source
+
+Benri is a Swift Package Manager app with no external package dependencies. Xcode or the macOS Command Line Tools with Swift 6 are sufficient.
 
 ```bash
+git clone https://github.com/crimsonteps/quick-vault.git
+cd quick-vault
 make test
 make app
 open dist/Benri.app
 ```
 
-也可以直接运行开发版本：
+Useful commands:
 
 ```bash
-swift run Benri
+make build       # Debug build
+make test        # Run the zero-dependency checks
+make app         # Build an app for the current architecture
+make release     # Build a Universal 2 zip and SHA-256 checksum
+make clean
 ```
 
-`make app` 会执行 Release 构建、生成原生应用图标、创建 `dist/Benri.app` 并进行 ad-hoc codesign。
+When built with an older SDK, Benri automatically uses the system Material appearance. Builds made with the macOS 26 SDK use native Liquid Glass on macOS 26 while keeping the same macOS 13 deployment target.
 
-## 测试
+## Project structure
 
-当前机器的精简 Command Line Tools 不包含 XCTest 或 Swift Testing 运行库，因此项目提供零依赖的 `QuickVaultChecks` 测试可执行文件：
-
-```bash
-make test
+```text
+Sources/QuickVault/        AppKit and SwiftUI application
+Sources/QuickVaultCore/    Models, encryption, key, and file storage
+Sources/QuickVaultChecks/  Zero-dependency automated checks
+Resources/                 Info.plist and app icon source
+Scripts/                   App and release packaging
 ```
 
-检查范围包括：
+## Scope
 
-- 模型加密编解码
-- 仅按记录名称搜索
-- 旧字段记录自动迁移为自由文本
-- 分类过滤和排序
-- 删除分类后的记录迁移
-- 密文不包含字段明文
-- 错误密钥拒绝解密
-- 原子文件保存、密钥读取和 `0600` 权限
-- 解密失败不覆盖原文件
+Version 1 focuses on a reliable local workflow. Cloud sync, browser autofill, import/export, password generation, launch at login, and cross-platform support are not currently included.
 
-## 重置
+## Contributing
 
-从错误界面选择“重置保险库”会删除本地加密文件、本地密钥和旧版 Keychain 密钥。此操作无法撤销。
+Bug reports and focused pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a change. Maintainers can find the release checklist in [RELEASING.md](RELEASING.md).
 
-## 项目范围
+## License
 
-v1 不包含云同步、浏览器自动填充、导入导出、密码生成器、开机启动和跨平台支持。
+Benri is available under the [MIT License](LICENSE).

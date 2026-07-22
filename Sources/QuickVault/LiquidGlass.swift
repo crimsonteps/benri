@@ -15,17 +15,27 @@ private struct QuickVaultGlassModifier: ViewModifier {
                 .overlay {
                     shape.stroke(Color.primary.opacity(0.12), lineWidth: 1)
                 }
-        } else if #available(macOS 26.0, *) {
-            content.glassEffect(
-                .regular,
-                in: .rect(cornerRadius: cornerRadius)
-            )
         } else {
+#if canImport(SwiftUI, _version: 7.0)
+            if #available(macOS 26.0, *) {
+                content.glassEffect(
+                    .regular,
+                    in: .rect(cornerRadius: cornerRadius)
+                )
+            } else {
+                content
+                    .background(.ultraThinMaterial, in: shape)
+                    .overlay {
+                        shape.stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                    }
+            }
+#else
             content
                 .background(.ultraThinMaterial, in: shape)
                 .overlay {
                     shape.stroke(Color.primary.opacity(0.12), lineWidth: 1)
                 }
+#endif
         }
     }
 }

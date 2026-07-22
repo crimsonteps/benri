@@ -64,6 +64,7 @@ final class VaultViewModel: ObservableObject {
     private let keyStore: VaultKeyStore
     private var fileStore: VaultFileStore?
     private var recordSaveWorkItem: DispatchWorkItem?
+    private var hasUnsavedChanges = false
 
     init(
         vaultFileURL: URL? = nil,
@@ -104,6 +105,10 @@ final class VaultViewModel: ObservableObject {
     var selectedRecord: VaultRecord? {
         guard let selectedRecordID else { return nil }
         return payload.records.first(where: { $0.id == selectedRecordID })
+    }
+
+    var canModifyVault: Bool {
+        fatalErrorMessage == nil && fileStore != nil
     }
 
     func record(id: UUID) -> VaultRecord? {
@@ -185,15 +190,20 @@ final class VaultViewModel: ObservableObject {
     }
 
     func beginNewRecord() {
+        guard canModifyVault else { return }
         recordEditor = RecordEditorContext(recordID: nil)
     }
 
     func beginNewCategory() {
+        guard canModifyVault else { return }
         categoryEditor = CategoryEditorContext(categoryID: nil)
     }
 
     func beginRenamingCategory(_ id: UUID) {
-        guard let category = category(id: id), !category.isBuiltIn else { return }
+        guard canModifyVault,
+              let category = category(id: id),
+              !category.isBuiltIn
+        else { return }
         categoryEditor = CategoryEditorContext(categoryID: id)
     }
 
@@ -208,6 +218,7 @@ final class VaultViewModel: ObservableObject {
         categoryID: UUID,
         content: String
     ) {
+        guard canModifyVault else { return }
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanName.isEmpty else { return }
 
@@ -234,17 +245,19 @@ final class VaultViewModel: ObservableObject {
 
         selectedCategoryID = safeCategoryID
         selectedRecordID = recordID
-        persist()
+        persistChanges()
     }
 
     func deleteRecord(_ id: UUID) {
+        guard canModifyVault else { return }
         flushPendingRecordSave()
         payload.records.removeAll(where: { $0.id == id })
         ensureSelection()
-        persist()
+        persistChanges()
     }
 
     func updateRecordName(id: UUID, name: String) {
+        guard canModifyVault else { return }
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanName.isEmpty,
               let index = payload.records.firstIndex(where: { $0.id == id }),
@@ -257,7 +270,8 @@ final class VaultViewModel: ObservableObject {
     }
 
     func updateRecordContent(id: UUID, content: String) {
-        guard let index = payload.records.firstIndex(where: { $0.id == id }),
+        guard canModifyVault,
+              let index = payload.records.firstIndex(where: { $0.id == id }),
               payload.records[index].content != content
         else { return }
 
@@ -268,23 +282,24 @@ final class VaultViewModel: ObservableObject {
     }
 
     func flushPendingRecordSave() {
-        guard recordSaveWorkItem != nil else { return }
         recordSaveWorkItem?.cancel()
         recordSaveWorkItem = nil
-        persist()
+        persistIfNeeded()
     }
 
     private func scheduleRecordSave() {
+        hasUnsavedChanges = true
         recordSaveWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
             self?.recordSaveWorkItem = nil
-            self?.persist()
+            self?.persistIfNeeded()
         }
         recordSaveWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: workItem)
     }
 
     func saveCategory(id: UUID?, name: String) {
+        guard canModifyVault else { return }
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanName.isEmpty else { return }
 
@@ -300,34 +315,38 @@ final class VaultViewModel: ObservableObject {
         }
 
         ensureSelection()
-        persist()
+        persistChanges()
     }
 
     func requestDeleteCategory(_ id: UUID) {
-        guard let category = category(id: id), !category.isBuiltIn else { return }
+        guard canModifyVault,
+              let category = category(id: id),
+              !category.isBuiltIn
+        else { return }
         alert = .confirmDeleteCategory(id)
     }
 
     func deleteCategory(_ id: UUID) {
+        guard canModifyVault else { return }
         payload.deleteCustomCategory(id: id)
         if selectedCategoryID == id {
             selectedCategoryID = VaultDefaults.otherCategoryID
         }
         ensureSelection()
-        persist()
+        persistChanges()
     }
 
     @discardableResult
     func copySelectedRecord() -> Bool {
         guard let record = selectedRecord, !record.content.isEmpty else { return false }
-        copy(record.content)
-        return true
+        return copy(record.content)
     }
 
-    func copy(_ value: String) {
+    @discardableResult
+    func copy(_ value: String) -> Bool {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(value, forType: .string)
+        return pasteboard.setString(value, forType: .string)
     }
 
     func openDataFolder() {
@@ -344,23 +363,34 @@ final class VaultViewModel: ObservableObject {
     }
 
     func resetVault() {
+        recordSaveWorkItem?.cancel()
+        recordSaveWorkItem = nil
+        hasUnsavedChanges = false
+        fileStore = nil
+        payload = .empty
+        selectedCategoryID = nil
+        selectedRecordID = nil
+        dismissEditors()
+
         do {
-            recordSaveWorkItem?.cancel()
-            recordSaveWorkItem = nil
-            try fileStore?.remove()
+            if FileManager.default.fileExists(atPath: vaultFileURL.path) {
+                try FileManager.default.removeItem(at: vaultFileURL)
+            }
             try keyStore.deleteKey()
-            fileStore = nil
             fatalErrorMessage = nil
-            payload = .empty
-            selectedCategoryID = nil
-            selectedRecordID = nil
             bootstrap()
         } catch {
+            fatalErrorMessage = "重置保险库失败：\(error.localizedDescription)"
             alert = .saveError(error.localizedDescription)
         }
     }
 
     private func bootstrap() {
+        recordSaveWorkItem?.cancel()
+        recordSaveWorkItem = nil
+        hasUnsavedChanges = false
+        fileStore = nil
+
         do {
             let fileExists = FileManager.default.fileExists(atPath: vaultFileURL.path)
             let keyData: Data
@@ -375,28 +405,47 @@ final class VaultViewModel: ObservableObject {
             }
 
             let store = VaultFileStore(fileURL: vaultFileURL, keyData: keyData)
-            fileStore = store
+            let loadedPayload: VaultPayload
 
             if store.exists {
-                payload = try store.load()
-                if payload.migrateToCurrentFormat() {
-                    try store.save(payload)
+                var candidate = try store.load()
+                if candidate.migrateToCurrentFormat() {
+                    try store.save(candidate)
                 }
+                loadedPayload = candidate
             } else {
-                payload = .empty
-                try store.save(payload)
+                let emptyPayload = VaultPayload.empty
+                try store.save(emptyPayload)
+                loadedPayload = emptyPayload
             }
 
+            payload = loadedPayload
+            fileStore = store
             fatalErrorMessage = nil
             ensureSelection()
         } catch {
+            fileStore = nil
             fatalErrorMessage = error.localizedDescription
         }
     }
 
-    private func persist() {
+    private func persistChanges() {
+        hasUnsavedChanges = true
+        persistIfNeeded()
+    }
+
+    private func persistIfNeeded() {
+        guard hasUnsavedChanges,
+              canModifyVault,
+              let fileStore
+        else { return }
+
         do {
-            try fileStore?.save(payload)
+            try fileStore.save(payload)
+            hasUnsavedChanges = false
+            if case .saveError = alert {
+                alert = nil
+            }
         } catch {
             alert = .saveError(error.localizedDescription)
         }

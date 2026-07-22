@@ -58,6 +58,13 @@ public enum VaultCrypto {
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode(VaultPayload.self, from: plaintext)
+        do {
+            return try decoder.decode(VaultPayload.self, from: plaintext)
+        } catch let error as VaultPayloadError {
+            switch error {
+            case .unsupportedFormat:
+                throw VaultCryptoError.unsupportedFormat
+            }
+        }
     }
 }

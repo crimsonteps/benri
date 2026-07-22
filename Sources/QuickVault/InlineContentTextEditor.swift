@@ -15,12 +15,11 @@ struct InlineContentTextEditor: NSViewRepresentable {
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
         scrollView.hasVerticalScroller = true
-        scrollView.scrollerStyle = .overlay
 
         let textView = RecordContentTextView()
         textView.delegate = context.coordinator
         textView.string = text
-        textView.font = .systemFont(ofSize: 14)
+        textView.font = .systemFont(ofSize: 14.5)
         textView.textColor = .labelColor
         textView.drawsBackground = false
         textView.isRichText = false
@@ -30,8 +29,9 @@ struct InlineContentTextEditor: NSViewRepresentable {
         textView.isHorizontallyResizable = false
         textView.isVerticallyResizable = true
         textView.autoresizingMask = [.width]
-        textView.textContainerInset = NSSize(width: 5, height: 5)
+        textView.textContainerInset = NSSize(width: 12, height: 10)
         textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.lineFragmentPadding = 0
         textView.textContainer?.containerSize = NSSize(
             width: scrollView.contentSize.width,
             height: .greatestFiniteMagnitude

@@ -1,10 +1,20 @@
 import AppKit
+import Foundation
 import QuickVaultCore
 import SwiftUI
 
 @MainActor
 private func releasePanelEditingFocus() {
     NSApp.keyWindow?.makeFirstResponder(nil)
+}
+
+private enum VaultLayout {
+    static let windowInset: CGFloat = 7
+    static let columnSpacing: CGFloat = 8
+    static let categoryWidth: CGFloat = 56
+    static let recordListWidth: CGFloat = 268
+    static let navigationCornerRadius: CGFloat = 18
+    static let contentCornerRadius: CGFloat = 14
 }
 
 struct VaultPanelView: View {
@@ -50,24 +60,32 @@ struct VaultPanelView: View {
     }
 
     private var mainContent: some View {
-        HStack(spacing: 0) {
-            SidebarView(
-                store: store,
-                isExpanded: sidebarExpanded,
-                openSettings: openSettings
+        HStack(spacing: VaultLayout.columnSpacing) {
+            HStack(spacing: 0) {
+                SidebarView(
+                    store: store,
+                    isExpanded: sidebarExpanded,
+                    openSettings: openSettings
+                )
+                .frame(width: sidebarExpanded ? 156 : VaultLayout.categoryWidth)
+
+                Divider().opacity(0.28)
+
+                RecordListView(store: store)
+                    .frame(width: VaultLayout.recordListWidth)
+            }
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: VaultLayout.navigationCornerRadius,
+                    style: .continuous
+                )
             )
-            .frame(width: sidebarExpanded ? 156 : 56)
-
-            Divider().opacity(0.45)
-
-            RecordListView(store: store)
-                .frame(width: 264)
-
-            Divider().opacity(0.45)
+            .quickVaultGlass(cornerRadius: VaultLayout.navigationCornerRadius)
 
             RecordDetailView(store: store)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .padding(VaultLayout.windowInset)
     }
 
     private func makeAlert(_ alert: VaultAlert) -> Alert {
@@ -99,6 +117,11 @@ struct VaultPanelView: View {
 }
 
 private struct SidebarView: View {
+    private enum ScrollTarget: Hashable {
+        case all
+        case category(UUID)
+    }
+
     @ObservedObject var store: VaultViewModel
     let isExpanded: Bool
     let openSettings: () -> Void
@@ -107,52 +130,62 @@ private struct SidebarView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
 
-            ScrollView {
-                VStack(spacing: 4) {
-                    SidebarRow(
-                        title: "全部",
-                        icon: "square.stack.3d.up.fill",
-                        count: store.recordCount(for: nil),
-                        isSelected: store.selectedCategoryID == nil,
-                        isKeyboardActive: store.keyboardPane == .categories,
-                        isExpanded: isExpanded
-                    ) {
-                        releasePanelEditingFocus()
-                        store.selectCategory(nil)
-                    }
-
-                    ForEach(store.sortedCategories) { category in
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 4) {
                         SidebarRow(
-                            title: category.name,
-                            icon: iconName(for: category),
-                            count: store.recordCount(for: category.id),
-                            isSelected: store.selectedCategoryID == category.id,
+                            title: "全部",
+                            icon: "square.stack.3d.up.fill",
+                            count: store.recordCount(for: nil),
+                            isCustom: false,
+                            isSelected: store.selectedCategoryID == nil,
                             isKeyboardActive: store.keyboardPane == .categories,
                             isExpanded: isExpanded
                         ) {
                             releasePanelEditingFocus()
-                            store.selectCategory(category.id)
+                            store.selectCategory(nil)
                         }
-                        .contextMenu {
-                            if !category.isBuiltIn {
-                                Button("重命名") {
-                                    store.beginRenamingCategory(category.id)
-                                }
-                                Button("删除分类", role: .destructive) {
-                                    store.requestDeleteCategory(category.id)
+                        .id(ScrollTarget.all)
+
+                        ForEach(store.sortedCategories) { category in
+                            SidebarRow(
+                                title: category.name,
+                                icon: iconName(for: category),
+                                count: store.recordCount(for: category.id),
+                                isCustom: !category.isBuiltIn,
+                                isSelected: store.selectedCategoryID == category.id,
+                                isKeyboardActive: store.keyboardPane == .categories,
+                                isExpanded: isExpanded
+                            ) {
+                                releasePanelEditingFocus()
+                                store.selectCategory(category.id)
+                            }
+                            .contextMenu {
+                                if !category.isBuiltIn {
+                                    Button("重命名") {
+                                        store.beginRenamingCategory(category.id)
+                                    }
+                                    Button("删除分类", role: .destructive) {
+                                        store.requestDeleteCategory(category.id)
+                                    }
                                 }
                             }
+                            .id(ScrollTarget.category(category.id))
                         }
                     }
+                    .padding(.horizontal, 7)
                 }
-                .padding(.horizontal, 7)
+                .onChange(of: store.selectedCategoryID) { selectedCategoryID in
+                    let target = selectedCategoryID.map(ScrollTarget.category) ?? .all
+                    proxy.scrollTo(target, anchor: .center)
+                }
             }
 
             Spacer(minLength: 8)
 
             bottomActions
         }
-        .background(Color.primary.opacity(0.025))
+        .background(Color.clear)
     }
 
     @ViewBuilder
@@ -224,16 +257,20 @@ private struct SidebarRow: View {
     let title: String
     let icon: String
     let count: Int
+    let isCustom: Bool
     let isSelected: Bool
     let isKeyboardActive: Bool
     let isExpanded: Bool
     let action: () -> Void
 
+    @State private var isHovering = false
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(isSelected ? .primary : .secondary)
                     .frame(width: 18)
 
                 if isExpanded {
@@ -248,24 +285,30 @@ private struct SidebarRow: View {
             .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
             .frame(maxWidth: .infinity, alignment: isExpanded ? .leading : .center)
             .padding(.horizontal, isExpanded ? 9 : 0)
-            .frame(height: 34)
+            .frame(height: 36)
             .contentShape(Rectangle())
             .background {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(isKeyboardActive ? 0.18 : 0.1) : Color.clear)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .stroke(
-                                isSelected && isKeyboardActive
-                                    ? Color.accentColor.opacity(0.5)
-                                    : Color.clear,
-                                lineWidth: 1
-                            )
-                    }
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(rowBackground)
             }
         }
         .buttonStyle(.plain)
         .help("\(title)，\(count) 条记录")
+        .accessibilityLabel(Text(title))
+        .accessibilityValue(Text(accessibilityValue))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .onHover { isHovering = $0 }
+    }
+
+    private var accessibilityValue: String {
+        isCustom ? "自定义分类，\(count) 条记录" : "\(count) 条记录"
+    }
+
+    private var rowBackground: Color {
+        if isSelected {
+            return Color.accentColor.opacity(isKeyboardActive ? 0.16 : 0.1)
+        }
+        return isHovering ? Color.primary.opacity(0.045) : Color.clear
     }
 }
 
@@ -276,39 +319,47 @@ private struct RecordListView: View {
     var body: some View {
         VStack(spacing: 0) {
             searchBar
-                .padding(12)
-
-            Divider().opacity(0.45)
+                .padding(.horizontal, 12)
+                .padding(.top, 11)
+                .padding(.bottom, 8)
 
             if store.filteredRecords.isEmpty {
                 RecordListEmptyView(hasQuery: !store.searchText.isEmpty) {
                     store.beginNewRecord()
                 }
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 5) {
-                        ForEach(store.filteredRecords) { record in
-                            RecordRow(
-                                record: record,
-                                categoryName: store.selectedCategoryID == nil
-                                    ? store.categoryName(for: record.categoryID)
-                                    : nil,
-                                isSelected: store.selectedRecordID == record.id,
-                                isKeyboardActive: store.keyboardPane == .records
-                            ) {
-                                releasePanelEditingFocus()
-                                store.keyboardPane = .records
-                                store.selectedRecordID = record.id
-                            } deleteAction: {
-                                store.deleteRecord(record.id)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 2) {
+                            ForEach(store.filteredRecords) { record in
+                                RecordRow(
+                                    record: record,
+                                    categoryName: store.selectedCategoryID == nil
+                                        ? store.categoryName(for: record.categoryID)
+                                        : nil,
+                                    isSelected: store.selectedRecordID == record.id,
+                                    isKeyboardActive: store.keyboardPane == .records
+                                ) {
+                                    releasePanelEditingFocus()
+                                    store.keyboardPane = .records
+                                    store.selectedRecordID = record.id
+                                } deleteAction: {
+                                    store.deleteRecord(record.id)
+                                }
+                                .id(record.id)
                             }
                         }
+                        .padding(.horizontal, 7)
+                        .padding(.bottom, 7)
                     }
-                    .padding(8)
+                    .onChange(of: store.selectedRecordID) { selectedRecordID in
+                        guard let selectedRecordID else { return }
+                        proxy.scrollTo(selectedRecordID, anchor: .center)
+                    }
                 }
             }
         }
-        .background(Color.primary.opacity(0.015))
+        .background(Color.clear)
         .onReceive(NotificationCenter.default.publisher(for: .quickVaultFocusSearch)) { _ in
             searchIsFocused = true
         }
@@ -348,21 +399,20 @@ private struct RecordListView: View {
                 }
             }
             .padding(.horizontal, 10)
-            .frame(height: 33)
-            .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 10))
+            .frame(height: 30)
+            .background(Color.primary.opacity(0.065), in: RoundedRectangle(cornerRadius: 9))
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 9)
+                    .stroke(Color.primary.opacity(0.06), lineWidth: 1)
             }
 
             Button(action: store.beginNewRecord) {
                 Image(systemName: "plus")
                     .font(.system(size: 12, weight: .semibold))
-                    .frame(width: 31, height: 31)
-                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 10))
-                    .foregroundStyle(Color.white)
+                    .frame(width: 14, height: 14)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
             .keyboardShortcut("n", modifiers: .command)
             .help("新建记录 ⌘N")
         }
@@ -377,59 +427,56 @@ private struct RecordRow: View {
     let action: () -> Void
     let deleteAction: () -> Void
 
+    @State private var isHovering = false
+
     private var preview: String {
         let firstLine = record.content
             .split(whereSeparator: \Character.isNewline)
             .map(String.init)
             .first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty })
-        return firstLine ?? "暂无内容"
+        return firstLine?.trimmingCharacters(in: .whitespaces) ?? "暂无内容"
+    }
+
+    private var subtitle: String {
+        guard let categoryName else { return preview }
+        return "\(categoryName) · \(preview)"
     }
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(record.name)
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
 
-                HStack(spacing: 7) {
-                    if let categoryName {
-                        Text(categoryName)
-                            .font(.system(size: 10, weight: .semibold))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 5))
-                    }
-
-                    Text(preview)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
+                Text(subtitle)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 10)
-            .padding(.vertical, 9)
+            .padding(.vertical, 8)
+            .frame(minHeight: 52)
             .contentShape(Rectangle())
             .background {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(isKeyboardActive ? 0.17 : 0.09) : Color.clear)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(
-                                isSelected && isKeyboardActive
-                                    ? Color.accentColor.opacity(0.48)
-                                    : Color.clear,
-                                lineWidth: 1
-                            )
-                    }
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(rowBackground)
             }
         }
         .buttonStyle(.plain)
         .contextMenu {
             Button("删除记录", role: .destructive, action: deleteAction)
         }
+        .onHover { isHovering = $0 }
+    }
+
+    private var rowBackground: Color {
+        if isSelected {
+            return Color.accentColor.opacity(isKeyboardActive ? 0.16 : 0.1)
+        }
+        return isHovering ? Color.primary.opacity(0.04) : Color.clear
     }
 }
 
@@ -474,19 +521,38 @@ private struct RecordDetailView: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(
+                    Color(nsColor: .controlBackgroundColor),
+                    in: RoundedRectangle(
+                        cornerRadius: VaultLayout.contentCornerRadius,
+                        style: .continuous
+                    )
+                )
             }
         }
         .background(Color.clear)
     }
 
     private func recordDetail(_ record: VaultRecord) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            InlineRecordNameEditor(store: store, record: record)
-                .id(record.id)
-                .padding(.horizontal, 20)
-                .frame(height: 57)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                InlineRecordNameEditor(store: store, record: record)
+                    .id(record.id)
 
-            Divider().opacity(0.45)
+                Spacer(minLength: 12)
+
+                Button {
+                    store.copy(record.content)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(record.content.isEmpty)
+                .help("复制内容")
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 44)
 
             InlineRecordContentEditor(store: store, record: record)
                 .id(record.id)
@@ -516,7 +582,8 @@ private struct InlineRecordNameEditor: View {
     var body: some View {
         TextField("记录名称", text: $name)
             .textFieldStyle(.plain)
-            .font(.system(size: 22, weight: .bold))
+            .font(.system(size: 17, weight: .semibold))
+            .lineLimit(1)
             .focused($isFocused)
             .onChange(of: name) { newValue in
                 store.updateRecordName(id: record.id, name: newValue)
@@ -563,26 +630,44 @@ private struct InlineRecordContentEditor: View {
     }
 
     var body: some View {
-        InlineContentTextEditor(
-            text: $content,
-            onFocusChange: handleFocusChange,
-            onDelete: {
-                store.deleteRecord(record.id)
+        ZStack(alignment: .topLeading) {
+            InlineContentTextEditor(
+                text: $content,
+                onFocusChange: handleFocusChange,
+                onDelete: {
+                    store.deleteRecord(record.id)
+                }
+            )
+
+            if content.isEmpty {
+                Text("开始输入内容…")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .allowsHitTesting(false)
             }
-        )
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
+        .background(
+            Color(nsColor: .controlBackgroundColor),
+            in: RoundedRectangle(
+                cornerRadius: VaultLayout.contentCornerRadius,
+                style: .continuous
+            )
+        )
         .overlay {
-            RoundedRectangle(cornerRadius: 13)
+            RoundedRectangle(
+                cornerRadius: VaultLayout.contentCornerRadius,
+                style: .continuous
+            )
                 .stroke(
                     isFocused
-                        ? Color.accentColor.opacity(0.52)
-                        : Color.primary.opacity(0.08),
-                    lineWidth: isFocused ? 1.5 : 1
+                        ? Color.accentColor.opacity(0.32)
+                        : Color(nsColor: .separatorColor).opacity(0.55),
+                    lineWidth: 1
                 )
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
         .onChange(of: content) { newValue in
             store.updateRecordContent(id: record.id, content: newValue)
         }

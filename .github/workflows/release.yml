@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Run checks
+        run: make test
+
+      - name: Build Universal 2 release
+        run: make release
+
+      - name: Verify release assets
+        run: |
+          lipo -archs dist/Benri.app/Contents/MacOS/Benri
+          cd dist
+          shasum -a 256 -c "Benri-${GITHUB_REF_NAME}-macOS-universal.zip.sha256"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ASSET="dist/Benri-${GITHUB_REF_NAME}-macOS-universal.zip"
+          CHECKSUM="$ASSET.sha256"
+          NOTES="docs/releases/${GITHUB_REF_NAME}.md"
+
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$ASSET" "$CHECKSUM" --clobber
+          elif [[ -f "$NOTES" ]]; then
+            gh release create "$GITHUB_REF_NAME" "$ASSET" "$CHECKSUM" \
+              --verify-tag \
+              --title "Benri $GITHUB_REF_NAME" \
+              --notes-file "$NOTES"
+          else
+            gh release create "$GITHUB_REF_NAME" "$ASSET" "$CHECKSUM" \
+              --verify-tag \
+              --title "Benri $GITHUB_REF_NAME" \
+              --generate-notes
+          fi

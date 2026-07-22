@@ -1,3 +1,4 @@
+import CryptoKit
 import Darwin
 import Foundation
 import QuickVaultCore
@@ -30,6 +31,18 @@ private struct CheckRunner {
 
 private var runner = CheckRunner()
 private let fixedDate = Date(timeIntervalSince1970: 1_700_000_000)
+
+private func encryptRawVaultJSON(_ json: Data, keyData: Data) throws -> Data {
+    let sealedBox = try AES.GCM.seal(json, using: SymmetricKey(data: keyData))
+    guard let combined = sealedBox.combined else {
+        throw VaultCryptoError.invalidFile
+    }
+
+    var output = Data("QVLT".utf8)
+    output.append(1)
+    output.append(combined)
+    return output
+}
 
 private func checkModelRoundTrip() throws {
     let record = VaultRecord(
@@ -113,6 +126,37 @@ private func checkLegacyMigration() throws {
     runner.expect(payload.records.first?.contentType == .text, "旧记录默认迁移为文本类型")
     runner.expect(payload.migrateToCurrentFormat(), "旧格式版本会执行迁移")
     runner.expect(payload.formatVersion == VaultPayload.currentFormatVersion, "迁移后格式版本正确")
+    runner.expect(
+        Set(payload.categories.map(\.id)) == Set(VaultDefaults.categories.map(\.id)),
+        "迁移会恢复缺失的内置分类"
+    )
+
+    let customCategory = VaultCategory(name: "保留分类", sortOrder: 10)
+    let renamedPersonalCategory = VaultCategory(
+        id: VaultDefaults.personalCategoryID,
+        name: "私人",
+        sortOrder: 0,
+        isBuiltIn: true
+    )
+    var partialCategoriesPayload = VaultPayload(
+        formatVersion: 1,
+        categories: [renamedPersonalCategory, customCategory]
+    )
+    _ = partialCategoriesPayload.migrateToCurrentFormat()
+    runner.expect(
+        partialCategoriesPayload.categories.contains(renamedPersonalCategory)
+            && partialCategoriesPayload.categories.contains(customCategory)
+            && partialCategoriesPayload.categories.count == VaultDefaults.categories.count + 1,
+        "迁移保留已有同 ID 分类与自定义分类"
+    )
+
+    var currentPayloadWithMissingCategories = VaultPayload(categories: [])
+    runner.expect(
+        currentPayloadWithMissingCategories.migrateToCurrentFormat()
+            && currentPayloadWithMissingCategories.categories == VaultDefaults.categories,
+        "已升级版本也会补回缺失的内置分类"
+    )
+    runner.expect(!payload.migrateToCurrentFormat(), "完整当前格式无需重复迁移")
 
     let encoded = try JSONEncoder().encode(payload)
     let encodedText = String(decoding: encoded, as: UTF8.self)
@@ -140,6 +184,39 @@ private func checkCrypto() throws {
     }
     runner.expectThrows("普通文本不能伪装成保险库") {
         _ = try VaultCrypto.decrypt(Data("plain json".utf8), keyData: key)
+    }
+
+    runner.expectThrows("不会写入高于当前版本的保险库格式") {
+        let futurePayload = VaultPayload(
+            formatVersion: VaultPayload.currentFormatVersion + 1
+        )
+        _ = try VaultCrypto.encrypt(futurePayload, keyData: key)
+    }
+
+    let futureJSON = """
+    {
+      "formatVersion": \(VaultPayload.currentFormatVersion + 1),
+      "categories": [],
+      "records": [
+        {
+          "contentType": "totp",
+          "futureSecret": "must-not-be-downgraded"
+        }
+      ],
+      "futureRoot": "must-not-be-lost"
+    }
+    """
+    let encryptedFuturePayload = try encryptRawVaultJSON(
+        Data(futureJSON.utf8),
+        keyData: key
+    )
+    do {
+        _ = try VaultCrypto.decrypt(encryptedFuturePayload, keyData: key)
+        runner.expect(false, "读取高版本保险库时明确拒绝")
+    } catch VaultCryptoError.unsupportedFormat {
+        runner.expect(true, "读取高版本保险库时明确拒绝")
+    } catch {
+        runner.expect(false, "读取高版本保险库时明确拒绝")
     }
 }
 
