@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
+import Combine
 import OSLog
 import SwiftUI
 
@@ -25,13 +26,13 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let panel: QuickVaultPanel
     private let store: VaultViewModel
     private var keyMonitor: Any?
-    private var shouldPositionOnNextShow = true
     private var shouldHideAfterEditorDismissal = false
     private var isHidingPanel = false
     private var previousApplication: NSRunningApplication?
     private var previousFocusedElement: AXUIElement?
     private var pasteTask: Task<Void, Never>?
     private var pasteTransactionID: UInt64 = 0
+    private var cancellables = Set<AnyCancellable>()
 
     init(
         store: VaultViewModel,
@@ -40,7 +41,12 @@ final class PanelController: NSObject, NSWindowDelegate {
     ) {
         self.store = store
         self.panel = QuickVaultPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 820, height: 520),
+            contentRect: NSRect(
+                x: 0,
+                y: 0,
+                width: VaultLayout.collapsedWindowWidth,
+                height: VaultLayout.windowHeight
+            ),
             styleMask: [
                 .titled,
                 .closable,
@@ -65,11 +71,18 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.titlebarSeparatorStyle = .none
+        panel.isMovable = false
         panel.isMovableByWindowBackground = false
         panel.backgroundColor = .clear
         panel.isOpaque = false
-        panel.hasShadow = true
-        panel.contentMinSize = NSSize(width: 820, height: 520)
+        panel.hasShadow = false
+        panel.contentMinSize = NSSize(
+            width: VaultLayout.collapsedWindowWidth,
+            height: VaultLayout.windowHeight
+        )
+        panel.standardWindowButton(.closeButton)?.isHidden = true
+        panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        panel.standardWindowButton(.zoomButton)?.isHidden = true
 
         let rootView = VaultPanelView(
             store: store,
@@ -80,9 +93,20 @@ final class PanelController: NSObject, NSWindowDelegate {
             },
             onEditorDismissed: { [weak self] in self?.editorDidDismiss() }
         )
-        panel.contentView = NSHostingView(rootView: rootView)
-        shouldPositionOnNextShow = !panel.setFrameUsingName("benri.mainWindow")
-        panel.setFrameAutosaveName("benri.mainWindow")
+        let hostingView = NSHostingView(rootView: rootView)
+        hostingView.sizingOptions = []
+        panel.contentView = hostingView
+
+        Publishers.CombineLatest(
+            store.$recordPanelMode.removeDuplicates(),
+            store.$fatalErrorMessage
+                .map { $0 != nil }
+                .removeDuplicates()
+        )
+            .sink { [weak self] mode, hasFatalError in
+                self?.updatePanelWidth(for: mode, hasFatalError: hasFatalError)
+            }
+            .store(in: &cancellables)
 
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self,
@@ -118,6 +142,7 @@ final class PanelController: NSObject, NSWindowDelegate {
                 case .categories:
                     self.store.moveCategorySelection(-1)
                 case .records:
+                    self.panel.makeFirstResponder(nil)
                     self.store.moveSelection(-1)
                 case .value:
                     return event
@@ -129,18 +154,34 @@ final class PanelController: NSObject, NSWindowDelegate {
                 case .categories:
                     self.store.moveCategorySelection(1)
                 case .records:
+                    self.panel.makeFirstResponder(nil)
                     self.store.moveSelection(1)
                 case .value:
                     return event
                 }
                 return nil
             case kVK_LeftArrow:
+                if self.store.recordPanelMode == .preview {
+                    self.store.closeRecordPanel()
+                    return nil
+                }
+                if self.store.recordPanelMode == .edit {
+                    return event
+                }
                 if usesCommand || self.store.searchText.isEmpty {
                     self.store.moveKeyboardPaneLeft()
                     return nil
                 }
                 return event
             case kVK_RightArrow:
+                if self.store.recordPanelMode == .edit {
+                    return event
+                }
+                if self.store.keyboardPane == .records {
+                    self.panel.makeFirstResponder(nil)
+                    self.store.showSelectedRecordPreview()
+                    return nil
+                }
                 if usesCommand || self.store.searchText.isEmpty {
                     self.store.moveKeyboardPaneRight()
                     return nil
@@ -148,6 +189,9 @@ final class PanelController: NSObject, NSWindowDelegate {
                 return event
             case kVK_Return, kVK_ANSI_KeypadEnter:
                 if usesCommand {
+                    return event
+                }
+                if self.store.recordPanelMode == .edit {
                     return event
                 }
                 if self.store.keyboardPane != .categories,
@@ -214,6 +258,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         cancelPendingPaste()
 
         if !panel.isVisible {
+            store.closeRecordPanel()
             previousApplication = nil
             previousFocusedElement = nil
 
@@ -228,10 +273,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             }
         }
 
-        if shouldPositionOnNextShow {
-            positionPanel()
-            shouldPositionOnNextShow = false
-        }
+        positionPanel()
         store.keyboardPane = .records
         if panel.isMiniaturized {
             panel.deminiaturize(nil)
@@ -331,15 +373,19 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func windowDidResignKey(_ notification: Notification) {
-        guard
-            panel.isVisible,
-            panel.attachedSheet == nil,
-            !isHidingPanel,
-            !NSRunningApplication.current.isActive
-        else { return }
+        guard panel.isVisible, !isHidingPanel else { return }
 
-        pasteLogger.debug("Nonactivating panel resigned key; hiding")
-        hide(restoringPreviousApplication: false)
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.panel.isVisible,
+                  !self.panel.isKeyWindow,
+                  self.panel.attachedSheet == nil,
+                  !self.isHidingPanel
+            else { return }
+
+            pasteLogger.debug("Panel resigned key; hiding")
+            self.hide(restoringPreviousApplication: false)
+        }
     }
 
     private func editorDidDismiss() {
@@ -575,17 +621,50 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
     }
 
+    private func updatePanelWidth(
+        for mode: RecordPanelMode,
+        hasFatalError: Bool
+    ) {
+        let targetWidth = !hasFatalError && mode == .closed
+            ? VaultLayout.collapsedWindowWidth
+            : VaultLayout.expandedWindowWidth
+        let targetMinimumSize = NSSize(
+            width: targetWidth,
+            height: VaultLayout.windowHeight
+        )
+
+        if targetWidth < panel.contentMinSize.width {
+            panel.contentMinSize = targetMinimumSize
+        }
+
+        guard abs(panel.frame.width - targetWidth) > 0.5 else {
+            panel.contentMinSize = targetMinimumSize
+            return
+        }
+
+        var frame = panel.frame
+        frame.size.width = targetWidth
+        panel.setFrame(frame, display: false)
+        panel.contentMinSize = targetMinimumSize
+    }
+
     private func positionPanel() {
         let mouseLocation = NSEvent.mouseLocation
         let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) })
             ?? NSScreen.main
         guard let visibleFrame = screen?.visibleFrame else { return }
 
-        let panelSize = panel.frame.size
+        let panelSize = NSSize(
+            width: panel.frame.width,
+            height: VaultLayout.windowHeight
+        )
         let origin = NSPoint(
             x: visibleFrame.midX - panelSize.width / 2,
-            y: visibleFrame.maxY - panelSize.height - 72
+            y: visibleFrame.midY - panelSize.height / 2
         )
-        panel.setFrameOrigin(origin)
+        panel.setFrame(
+            NSRect(origin: origin, size: panelSize),
+            display: false
+        )
     }
 }

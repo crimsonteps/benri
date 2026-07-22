@@ -8,13 +8,18 @@ private func releasePanelEditingFocus() {
     NSApp.keyWindow?.makeFirstResponder(nil)
 }
 
-private enum VaultLayout {
+enum VaultLayout {
+    static let collapsedWindowWidth: CGFloat = 340
+    static let expandedWindowWidth: CGFloat = 820
+    static let windowHeight: CGFloat = 520
     static let windowInset: CGFloat = 7
     static let columnSpacing: CGFloat = 8
     static let categoryWidth: CGFloat = 56
     static let recordListWidth: CGFloat = 268
     static let navigationCornerRadius: CGFloat = 18
     static let contentCornerRadius: CGFloat = 14
+    static let previewMinimumHeight: CGFloat = 160
+    static let contentPanelMaximumHeight = windowHeight - windowInset * 2
 }
 
 struct VaultPanelView: View {
@@ -26,6 +31,10 @@ struct VaultPanelView: View {
 
     private let sidebarExpanded = false
 
+    private var showsRecordPanel: Bool {
+        store.recordPanelMode != .closed
+    }
+
     var body: some View {
         Group {
             if let fatalErrorMessage = store.fatalErrorMessage {
@@ -34,15 +43,24 @@ struct VaultPanelView: View {
                     openDataFolder: store.openDataFolder,
                     resetVault: store.requestReset
                 )
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: VaultLayout.contentCornerRadius,
+                        style: .continuous
+                    )
+                )
+                .quickVaultGlass(cornerRadius: VaultLayout.contentCornerRadius)
+                .padding(VaultLayout.windowInset)
+                .ignoresSafeArea()
             } else {
                 mainContent
             }
         }
-        .frame(minWidth: 820, minHeight: 520)
-        .background {
-            Color(nsColor: .windowBackgroundColor)
-                .ignoresSafeArea()
-        }
+        .frame(
+            minWidth: VaultLayout.collapsedWindowWidth,
+            minHeight: VaultLayout.windowHeight
+        )
+        .background(Color.clear)
         .onAppear {
             store.ensureSelection()
         }
@@ -60,7 +78,7 @@ struct VaultPanelView: View {
     }
 
     private var mainContent: some View {
-        HStack(spacing: VaultLayout.columnSpacing) {
+        HStack(alignment: .top, spacing: VaultLayout.columnSpacing) {
             HStack(spacing: 0) {
                 SidebarView(
                     store: store,
@@ -82,10 +100,24 @@ struct VaultPanelView: View {
             )
             .quickVaultGlass(cornerRadius: VaultLayout.navigationCornerRadius)
 
-            RecordDetailView(store: store)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if showsRecordPanel {
+                RecordPanelView(store: store)
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: store.recordPanelMode == .edit ? .infinity : nil,
+                        alignment: .top
+                    )
+                    .clipShape(
+                        RoundedRectangle(
+                            cornerRadius: VaultLayout.contentCornerRadius,
+                            style: .continuous
+                        )
+                    )
+                    .quickVaultGlass(cornerRadius: VaultLayout.contentCornerRadius)
+            }
         }
         .padding(VaultLayout.windowInset)
+        .ignoresSafeArea()
     }
 
     private func makeAlert(_ alert: VaultAlert) -> Alert {
@@ -341,8 +373,10 @@ private struct RecordListView: View {
                                     isKeyboardActive: store.keyboardPane == .records
                                 ) {
                                     releasePanelEditingFocus()
-                                    store.keyboardPane = .records
-                                    store.selectedRecordID = record.id
+                                    store.selectRecord(record.id)
+                                } editAction: {
+                                    releasePanelEditingFocus()
+                                    store.beginEditingRecord(record.id)
                                 } deleteAction: {
                                     store.deleteRecord(record.id)
                                 }
@@ -369,6 +403,7 @@ private struct RecordListView: View {
             }
         }
         .onChange(of: store.searchText) { _ in
+            store.closeRecordPanel()
             store.keyboardPane = .records
             store.ensureSelection()
         }
@@ -425,6 +460,7 @@ private struct RecordRow: View {
     let isSelected: Bool
     let isKeyboardActive: Bool
     let action: () -> Void
+    let editAction: () -> Void
     let deleteAction: () -> Void
 
     @State private var isHovering = false
@@ -467,7 +503,8 @@ private struct RecordRow: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            Button("删除记录", role: .destructive, action: deleteAction)
+            Button("编辑", action: editAction)
+            Button("删除", role: .destructive, action: deleteAction)
         }
         .onHover { isHovering = $0 }
     }
@@ -501,39 +538,26 @@ private struct RecordListEmptyView: View {
     }
 }
 
-private struct RecordDetailView: View {
+private struct RecordPanelView: View {
     @ObservedObject var store: VaultViewModel
 
+    @ViewBuilder
     var body: some View {
-        Group {
-            if let record = store.selectedRecord {
-                recordDetail(record)
-                    .contextMenu {
-                        deleteRecordButton(record)
-                    }
-            } else {
-                VStack(spacing: 12) {
-                    Image(systemName: "rectangle.and.text.magnifyingglass")
-                        .font(.system(size: 34, weight: .light))
-                        .foregroundStyle(.tertiary)
-                    Text("选择一条记录查看内容")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(
-                    Color(nsColor: .controlBackgroundColor),
-                    in: RoundedRectangle(
-                        cornerRadius: VaultLayout.contentCornerRadius,
-                        style: .continuous
-                    )
-                )
+        if let record = store.selectedRecord {
+            switch store.recordPanelMode {
+            case .closed:
+                EmptyView()
+            case .preview:
+                ReadOnlyRecordPreview(recordID: record.id, content: record.content)
+            case .edit:
+                recordEditor(record)
             }
+        } else {
+            EmptyView()
         }
-        .background(Color.clear)
     }
 
-    private func recordDetail(_ record: VaultRecord) -> some View {
+    private func recordEditor(_ record: VaultRecord) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 InlineRecordNameEditor(store: store, record: record)
@@ -558,11 +582,43 @@ private struct RecordDetailView: View {
                 .id(record.id)
         }
     }
+}
 
-    private func deleteRecordButton(_ record: VaultRecord) -> some View {
-        Button("删除记录", role: .destructive) {
-            store.deleteRecord(record.id)
+private struct ReadOnlyRecordPreview: View {
+    let recordID: UUID
+    let content: String
+
+    private var displayedContent: String {
+        content.isEmpty ? "暂无内容" : content
+    }
+
+    var body: some View {
+        ViewThatFits(in: .vertical) {
+            previewText
+                .frame(
+                    minHeight: VaultLayout.previewMinimumHeight,
+                    alignment: .topLeading
+                )
+
+            ScrollView(.vertical) {
+                previewText
+            }
+            .frame(
+                height: VaultLayout.contentPanelMaximumHeight,
+                alignment: .top
+            )
         }
+        .id(recordID)
+    }
+
+    private var previewText: some View {
+        Text(displayedContent)
+            .font(.system(size: 14))
+            .foregroundStyle(content.isEmpty ? Color.secondary : Color.primary)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(14)
     }
 }
 
@@ -597,6 +653,11 @@ private struct InlineRecordNameEditor: View {
             }
             .onSubmit {
                 isFocused = false
+            }
+            .onAppear {
+                DispatchQueue.main.async {
+                    isFocused = true
+                }
             }
             .onDisappear {
                 store.isEditingRecordName = false
