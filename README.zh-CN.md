@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Resources/benri-icon-source.png" width="128" height="128" alt="Benri 应用图标">
+  <img src="Resources/benri-icon-readme.png" width="128" height="128" alt="Benri 应用图标">
 </p>
 
 <h1 align="center">Benri</h1>
