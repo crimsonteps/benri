@@ -70,12 +70,14 @@ If automatic paste is not permitted or cannot complete, the content remains on t
 
 ## Privacy and security
 
-Benri stores its data in the legacy-compatible QuickVault directory:
+Benri stores its data in its own Application Support directory:
 
 ```text
-~/Library/Application Support/QuickVault/vault.qv
-~/Library/Application Support/QuickVault/vault.key
+~/Library/Application Support/Benri/vault.qv
+~/Library/Application Support/Benri/vault.key
 ```
+
+On the first launch after upgrading, Benri safely copies and verifies an existing `QuickVault` data directory, loads the migrated vault, and only then removes the old directory.
 
 - The vault is encrypted as one AES-256-GCM payload.
 - The randomly generated 32-byte key and vault file are both restricted to the current user with `0600` permissions; the containing directory uses `0700`.

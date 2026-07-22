@@ -7,18 +7,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings = AppSettings()
     private let store: VaultViewModel = {
         let environment = ProcessInfo.processInfo.environment
-        let applicationSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first ?? FileManager.default.homeDirectoryForCurrentUser
-        let vaultFileURL = environment["QUICKVAULT_DATA_FILE"]
-            .map { URL(fileURLWithPath: $0) }
-            ?? applicationSupport
-                .appendingPathComponent("QuickVault", isDirectory: true)
-                .appendingPathComponent("vault.qv")
+        let preparedStorage = environment["QUICKVAULT_DATA_FILE"]
+            .map {
+                PreparedVaultStorage(
+                    vaultFileURL: URL(fileURLWithPath: $0),
+                    legacyDirectoryToRemove: nil
+                )
+            }
+            ?? VaultStorage.prepareDefaultLocation()
+        let vaultFileURL = preparedStorage.vaultFileURL
         let keychainService = environment["QUICKVAULT_KEYCHAIN_SERVICE"]
             ?? "com.crimsonteps.quickvault"
-        return VaultViewModel(
+        let store = VaultViewModel(
             vaultFileURL: vaultFileURL,
             keyStore: VaultKeyStore(
                 fileURL: vaultFileURL
@@ -27,6 +27,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 legacyKeychain: KeychainKeyStore(service: keychainService)
             )
         )
+        if store.fatalErrorMessage == nil,
+           let legacyDirectory = preparedStorage.legacyDirectoryToRemove {
+            VaultStorage.removeLegacyDirectory(legacyDirectory)
+        }
+        return store
     }()
     private var panelController: PanelController!
     private var hotKeyManager: HotKeyManager!

@@ -77,15 +77,8 @@ final class VaultViewModel: ObservableObject {
         vaultFileURL: URL? = nil,
         keyStore: VaultKeyStore? = nil
     ) {
-        let applicationSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first ?? FileManager.default.homeDirectoryForCurrentUser
-
         let resolvedVaultFileURL = vaultFileURL
-            ?? applicationSupport
-                .appendingPathComponent("QuickVault", isDirectory: true)
-                .appendingPathComponent("vault.qv")
+            ?? VaultStorage.defaultVaultFileURL()
         self.vaultFileURL = resolvedVaultFileURL
         self.keyStore = keyStore ?? VaultKeyStore(
             fileURL: resolvedVaultFileURL
