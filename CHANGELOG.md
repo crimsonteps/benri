@@ -22,5 +22,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Zero-dependency checks for model migration, encryption, and file storage.
 - Universal 2 release packaging and automated GitHub release workflow.
 
-[Unreleased]: https://github.com/crimsonteps/quick-vault/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/crimsonteps/quick-vault/releases/tag/v1.0.0
+[Unreleased]: https://github.com/crimsonteps/benri/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/crimsonteps/benri/releases/tag/v1.0.0

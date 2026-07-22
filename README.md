@@ -12,13 +12,13 @@
 <p align="center">
   <a href="README.zh-CN.md">简体中文</a>
   ·
-  <a href="https://github.com/crimsonteps/quick-vault/releases/latest">Download</a>
+  <a href="https://github.com/crimsonteps/benri/releases/latest">Download</a>
   ·
-  <a href="https://github.com/crimsonteps/quick-vault/issues">Report a bug</a>
+  <a href="https://github.com/crimsonteps/benri/issues">Report a bug</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/crimsonteps/quick-vault/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/crimsonteps/quick-vault/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/crimsonteps/benri/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/crimsonteps/benri/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-black?logo=apple">
   <img alt="Swift 6" src="https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white">
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-blue.svg"></a>
@@ -47,7 +47,7 @@ Everything stays on your Mac. Benri has no account system, analytics, network re
 
 ## Install
 
-1. Download the latest `Benri-vX.Y.Z-macOS-universal.zip` from [Releases](https://github.com/crimsonteps/quick-vault/releases/latest).
+1. Download the latest `Benri-vX.Y.Z-macOS-universal.zip` from [Releases](https://github.com/crimsonteps/benri/releases/latest).
 2. Unzip it and move `Benri.app` to `/Applications`.
 3. Open Benri and optionally grant Accessibility permission when macOS asks.
 
@@ -85,15 +85,15 @@ Benri stores its data in the legacy-compatible QuickVault directory:
 
 The key is stored under the same macOS user account to avoid a password or Keychain prompt on every launch. This protects data at rest from casual disclosure, but it does **not** protect against software or a person that already has access to your logged-in account. Content copied from Benri also enters the macOS clipboard and follows normal system clipboard behavior. Benri is a convenience utility, not a replacement for a dedicated password manager.
 
-Please report security issues through [GitHub's private security advisory form](https://github.com/crimsonteps/quick-vault/security/advisories/new), not a public issue. See [SECURITY.md](SECURITY.md).
+Please report security issues through [GitHub's private security advisory form](https://github.com/crimsonteps/benri/security/advisories/new), not a public issue. See [SECURITY.md](SECURITY.md).
 
 ## Build from source
 
 Benri is a Swift Package Manager app with no external package dependencies. Xcode or the macOS Command Line Tools with Swift 6 are sufficient.
 
 ```bash
-git clone https://github.com/crimsonteps/quick-vault.git
-cd quick-vault
+git clone https://github.com/crimsonteps/benri.git
+cd benri
 make test
 make app
 open dist/Benri.app

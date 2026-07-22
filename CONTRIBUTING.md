@@ -18,8 +18,8 @@ Requirements:
 - Swift 6 through Xcode or the macOS Command Line Tools
 
 ```bash
-git clone https://github.com/crimsonteps/quick-vault.git
-cd quick-vault
+git clone https://github.com/crimsonteps/benri.git
+cd benri
 make test
 make app
 open dist/Benri.app

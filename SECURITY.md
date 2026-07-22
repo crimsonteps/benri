@@ -13,7 +13,7 @@ Security fixes are provided for the latest released version of Benri.
 
 Please do not open a public issue for a suspected vulnerability.
 
-Use [GitHub's private security advisory form](https://github.com/crimsonteps/quick-vault/security/advisories/new) and include:
+Use [GitHub's private security advisory form](https://github.com/crimsonteps/benri/security/advisories/new) and include:
 
 - The affected Benri version and macOS version
 - Clear reproduction steps
