@@ -63,16 +63,16 @@ private func checkModelRoundTrip() throws {
 private func checkSearchAndCategories() {
     let payload = VaultPayload(records: [
         VaultRecord(
-            name: "生产服务器",
+            name: "Zulu Server",
             categoryID: VaultDefaults.serverCategoryID,
             content: "备注: needle"
         ),
         VaultRecord(name: "Apple ID", categoryID: VaultDefaults.personalCategoryID),
-        VaultRecord(name: "阿里云", categoryID: VaultDefaults.serverCategoryID)
+        VaultRecord(name: "Alpha Server", categoryID: VaultDefaults.serverCategoryID)
     ])
 
     runner.expect(
-        payload.filteredRecords(categoryID: nil, query: "服务器").map(\.name) == ["生产服务器"],
+        payload.filteredRecords(categoryID: nil, query: "Zulu").map(\.name) == ["Zulu Server"],
         "仅按记录名称搜索"
     )
     runner.expect(
@@ -81,7 +81,7 @@ private func checkSearchAndCategories() {
     )
     runner.expect(
         payload.filteredRecords(categoryID: VaultDefaults.serverCategoryID, query: "").map(\.name)
-            == ["阿里云", "生产服务器"],
+            == ["Alpha Server", "Zulu Server"],
         "分类过滤后按名称排序"
     )
 
