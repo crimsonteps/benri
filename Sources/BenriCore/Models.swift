@@ -125,17 +125,20 @@ private struct LegacyRecordField: Decodable {
 public struct VaultCategory: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     public var name: String
+    public var iconName: String?
     public var sortOrder: Int
     public var isBuiltIn: Bool
 
     public init(
         id: UUID = UUID(),
         name: String,
+        iconName: String? = nil,
         sortOrder: Int,
         isBuiltIn: Bool = false
     ) {
         self.id = id
         self.name = name
+        self.iconName = iconName
         self.sortOrder = sortOrder
         self.isBuiltIn = isBuiltIn
     }
@@ -148,10 +151,34 @@ public enum VaultDefaults {
     public static let otherCategoryID = UUID(uuidString: "00000000-0000-4000-8000-000000000004")!
 
     public static let categories: [VaultCategory] = [
-        VaultCategory(id: personalCategoryID, name: "个人", sortOrder: 0, isBuiltIn: true),
-        VaultCategory(id: workCategoryID, name: "工作", sortOrder: 1, isBuiltIn: true),
-        VaultCategory(id: serverCategoryID, name: "服务器", sortOrder: 2, isBuiltIn: true),
-        VaultCategory(id: otherCategoryID, name: "其他", sortOrder: 3, isBuiltIn: true)
+        VaultCategory(
+            id: personalCategoryID,
+            name: "个人",
+            iconName: "person.crop.circle",
+            sortOrder: 0,
+            isBuiltIn: true
+        ),
+        VaultCategory(
+            id: workCategoryID,
+            name: "工作",
+            iconName: "briefcase",
+            sortOrder: 1,
+            isBuiltIn: true
+        ),
+        VaultCategory(
+            id: serverCategoryID,
+            name: "服务器",
+            iconName: "server.rack",
+            sortOrder: 2,
+            isBuiltIn: true
+        ),
+        VaultCategory(
+            id: otherCategoryID,
+            name: "其他",
+            iconName: "tray",
+            sortOrder: 3,
+            isBuiltIn: true
+        )
     ]
 }
 
@@ -167,7 +194,7 @@ public enum VaultPayloadError: Error, LocalizedError, Equatable, Sendable {
 }
 
 public struct VaultPayload: Codable, Equatable, Sendable {
-    public static let currentFormatVersion = 3
+    public static let currentFormatVersion = 4
 
     public var formatVersion: Int
     public var categories: [VaultCategory]
@@ -217,25 +244,30 @@ public struct VaultPayload: Codable, Equatable, Sendable {
     }
 
     public func categoryName(for id: UUID) -> String {
-        categories.first(where: { $0.id == id })?.name ?? "其他"
+        categories.first(where: { $0.id == id })?.name ?? "未分类"
     }
 
     @discardableResult
     public mutating func migrateToCurrentFormat() -> Bool {
         guard formatVersion <= VaultPayload.currentFormatVersion else { return false }
 
+        let requiresVersionMigration = formatVersion < VaultPayload.currentFormatVersion
+        guard requiresVersionMigration else { return false }
+
         let existingCategoryIDs = Set(categories.map(\.id))
         let missingBuiltInCategories = VaultDefaults.categories.filter { category in
             !existingCategoryIDs.contains(category.id)
         }
-        let requiresVersionMigration = formatVersion < VaultPayload.currentFormatVersion
 
         categories.append(contentsOf: missingBuiltInCategories)
-        if requiresVersionMigration {
-            formatVersion = VaultPayload.currentFormatVersion
+        for index in categories.indices where categories[index].iconName == nil {
+            categories[index].iconName = VaultDefaults.categories.first(where: {
+                $0.id == categories[index].id
+            })?.iconName
         }
+        formatVersion = VaultPayload.currentFormatVersion
 
-        return requiresVersionMigration || !missingBuiltInCategories.isEmpty
+        return true
     }
 
     public func filteredRecords(categoryID: UUID?, query: String) -> [VaultRecord] {
@@ -258,10 +290,29 @@ public struct VaultPayload: Codable, Equatable, Sendable {
             return
         }
 
+        _ = deleteCategory(id: id)
+    }
+
+    @discardableResult
+    public mutating func deleteCategory(id: UUID) -> UUID? {
+        guard categories.count > 1,
+              categories.contains(where: { $0.id == id })
+        else { return nil }
+
         categories.removeAll(where: { $0.id == id })
+        let replacementCategoryID = categories.first(where: {
+            $0.id == VaultDefaults.otherCategoryID
+        })?.id ?? categories.sorted {
+            if $0.sortOrder == $1.sortOrder {
+                return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+            }
+            return $0.sortOrder < $1.sortOrder
+        }.first!.id
+
         for index in records.indices where records[index].categoryID == id {
-            records[index].categoryID = VaultDefaults.otherCategoryID
+            records[index].categoryID = replacementCategoryID
             records[index].updatedAt = Date()
         }
+        return replacementCategoryID
     }
 }

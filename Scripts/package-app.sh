@@ -2,16 +2,24 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-APP_DIR="$ROOT_DIR/dist/Benri.app"
-LEGACY_BENRI_APP_DIR="$ROOT_DIR/dist/benri.app"
-LEGACY_VALUET_APP_DIR="$ROOT_DIR/dist/valuet.app"
-LEGACY_QUICKVAULT_APP_DIR="$ROOT_DIR/dist/QuickVault.app"
+DIST_DIR="${BENRI_DIST_DIR:-$ROOT_DIR/dist}"
+APP_DIR="$DIST_DIR/Benri.app"
+LEGACY_BENRI_APP_DIR="$DIST_DIR/benri.app"
+LEGACY_VALUET_APP_DIR="$DIST_DIR/valuet.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 ICONSET_DIR="$ROOT_DIR/.build/Benri.iconset"
 ICON_FILE="$ROOT_DIR/.build/Benri.icns"
-CODESIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
+LOCAL_CODESIGN_IDENTITY="Benri Local Code Signing"
+if [[ -z "${CODESIGN_IDENTITY+x}" ]]; then
+    if /usr/bin/security find-identity -p codesigning -v \
+        | /usr/bin/grep -Fq "\"$LOCAL_CODESIGN_IDENTITY\""; then
+        CODESIGN_IDENTITY="$LOCAL_CODESIGN_IDENTITY"
+    else
+        CODESIGN_IDENTITY="-"
+    fi
+fi
 ARCH_LIST="${BENRI_ARCHS:-$(uname -m)}"
 typeset -a ARCHS
 typeset -a BINARIES
@@ -25,6 +33,8 @@ if [[ -n "${SWIFT_BUILD_FLAGS:-}" ]]; then
 fi
 
 cd "$ROOT_DIR"
+mkdir -p "$DIST_DIR"
+touch "$DIST_DIR/.metadata_never_index"
 
 for ARCH in "${ARCHS[@]}"; do
     SCRATCH_PATH="$ROOT_DIR/.build/release-$ARCH"
@@ -48,7 +58,6 @@ rm -rf \
     "$APP_DIR" \
     "$LEGACY_BENRI_APP_DIR" \
     "$LEGACY_VALUET_APP_DIR" \
-    "$LEGACY_QUICKVAULT_APP_DIR" \
     "$ICONSET_DIR" \
     "$ICON_FILE"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
@@ -68,6 +77,13 @@ cp "$ICON_FILE" "$RESOURCES_DIR/Benri.icns"
 
 if [[ "$CODESIGN_IDENTITY" == "-" ]]; then
     codesign --force --deep --sign - "$APP_DIR"
+elif [[ "$CODESIGN_IDENTITY" == "$LOCAL_CODESIGN_IDENTITY" ]]; then
+    codesign \
+        --force \
+        --deep \
+        --options runtime \
+        --sign "$CODESIGN_IDENTITY" \
+        "$APP_DIR"
 else
     codesign \
         --force \

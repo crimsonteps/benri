@@ -60,6 +60,7 @@ Community builds are ad-hoc signed unless a release explicitly says it is notari
 | Configurable global shortcut | Show or hide Benri |
 | `↑` / `↓` | Move through categories or records |
 | `Return` | Copy the selected record and paste into the previous app |
+| `⌘F` | Focus the record search field |
 | `⌘←` / `⌘→` | Move between columns |
 | `⌘N` | Create a record |
 | `⌘S` or `⌘Return` | Save in the record editor |
@@ -76,8 +77,6 @@ Benri stores its data in its own Application Support directory:
 ~/Library/Application Support/Benri/vault.qv
 ~/Library/Application Support/Benri/vault.key
 ```
-
-On the first launch after upgrading, Benri safely copies and verifies an existing `QuickVault` data directory, loads the migrated vault, and only then removes the old directory.
 
 - The vault is encrypted as one AES-256-GCM payload.
 - The randomly generated 32-byte key and vault file are both restricted to the current user with `0600` permissions; the containing directory uses `0700`.
@@ -116,9 +115,9 @@ When built with an older SDK, Benri automatically uses the system Material appea
 ## Project structure
 
 ```text
-Sources/QuickVault/        AppKit and SwiftUI application
-Sources/QuickVaultCore/    Models, encryption, key, and file storage
-Sources/QuickVaultChecks/  Zero-dependency automated checks
+Sources/Benri/        AppKit and SwiftUI application
+Sources/BenriCore/    Models, encryption, key, and file storage
+Sources/BenriChecks/  Zero-dependency automated checks
 Resources/                 Info.plist and app icon source
 Scripts/                   App and release packaging
 ```

@@ -4,7 +4,7 @@ build:
 	swift build
 
 test:
-	swift run QuickVaultChecks
+	swift run BenriChecks
 
 app:
 	./Scripts/package-app.sh

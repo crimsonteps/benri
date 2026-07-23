@@ -11,7 +11,7 @@
     <key>CFBundleIconFile</key>
     <string>Benri</string>
     <key>CFBundleIdentifier</key>
-    <string>com.crimsonteps.quickvault</string>
+    <string>com.crimsonteps.benri</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>

@@ -6,24 +6,26 @@ import OSLog
 import SwiftUI
 
 private let pasteLogger = Logger(
-    subsystem: "com.crimsonteps.quickvault",
+    subsystem: "com.crimsonteps.benri",
     category: "Paste"
 )
 
 extension Notification.Name {
-    static let quickVaultFocusSearch = Notification.Name("QuickVault.FocusSearch")
-    static let quickVaultSaveRecordEditor = Notification.Name("QuickVault.SaveRecordEditor")
-    static let quickVaultCancelRecordEditor = Notification.Name("QuickVault.CancelRecordEditor")
+    static let benriFocusSearch = Notification.Name("Benri.FocusSearch")
+    static let benriClearSearchFocus = Notification.Name("Benri.ClearSearchFocus")
+    static let benriSaveRecordEditor = Notification.Name("Benri.SaveRecordEditor")
+    static let benriCancelRecordEditor = Notification.Name("Benri.CancelRecordEditor")
 }
 
-final class QuickVaultPanel: NSPanel {
+final class BenriPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+    override var acceptsFirstResponder: Bool { true }
 }
 
 @MainActor
 final class PanelController: NSObject, NSWindowDelegate {
-    private let panel: QuickVaultPanel
+    private let panel: BenriPanel
     private let store: VaultViewModel
     private var keyMonitor: Any?
     private var shouldHideAfterEditorDismissal = false
@@ -40,7 +42,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         openSettings: @escaping () -> Void
     ) {
         self.store = store
-        self.panel = QuickVaultPanel(
+        self.panel = BenriPanel(
             contentRect: NSRect(
                 x: 0,
                 y: 0,
@@ -51,7 +53,6 @@ final class PanelController: NSObject, NSWindowDelegate {
                 .titled,
                 .closable,
                 .miniaturizable,
-                .resizable,
                 .fullSizeContentView,
                 .nonactivatingPanel
             ],
@@ -90,6 +91,9 @@ final class PanelController: NSObject, NSWindowDelegate {
             openSettings: openSettings,
             onClose: { [weak self] in
                 self?.hide(restoringPreviousApplication: true)
+            },
+            onPasteRecord: { [weak self] recordID in
+                self?.copyRecordAndPaste(recordID)
             },
             onEditorDismissed: { [weak self] in self?.editorDidDismiss() }
         )
@@ -136,6 +140,12 @@ final class PanelController: NSObject, NSWindowDelegate {
             let usesCommand = modifiers.contains(.command)
 
             switch Int(event.keyCode) {
+            case kVK_ANSI_F:
+                guard usesCommand else { return event }
+                self.store.closeRecordPanel()
+                self.store.keyboardPane = .records
+                NotificationCenter.default.post(name: .benriFocusSearch, object: nil)
+                return nil
             case kVK_UpArrow:
                 guard !usesCommand else { return event }
                 switch self.store.keyboardPane {
@@ -191,16 +201,8 @@ final class PanelController: NSObject, NSWindowDelegate {
                 if usesCommand {
                     return event
                 }
-                if self.store.recordPanelMode == .edit {
-                    return event
-                }
                 if self.store.keyboardPane != .categories,
-                   self.store.copySelectedRecord() {
-                    pasteLogger.info("Enter requested paste")
-                    self.hide(
-                        restoringPreviousApplication: true,
-                        pastingIntoPreviousApplication: true
-                    )
+                   self.copyRecordAndPaste() {
                     return nil
                 }
                 return event
@@ -210,20 +212,36 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
     }
 
+    @discardableResult
+    private func copyRecordAndPaste(_ recordID: UUID? = nil) -> Bool {
+        guard store.recordPanelMode != .edit else { return false }
+        if let recordID {
+            store.selectRecord(recordID)
+        }
+        guard store.copySelectedRecord() else { return false }
+
+        pasteLogger.info("Record requested paste")
+        hide(
+            restoringPreviousApplication: true,
+            pastingIntoPreviousApplication: true
+        )
+        return true
+    }
+
     private func handleRecordEditorShortcut(_ event: NSEvent) -> Bool {
         guard panel.attachedSheet?.isKeyWindow == true else { return false }
 
         let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
         if event.keyCode == kVK_Escape, modifiers.isEmpty {
             guard store.recordEditor != nil else { return false }
-            NotificationCenter.default.post(name: .quickVaultCancelRecordEditor, object: nil)
+            NotificationCenter.default.post(name: .benriCancelRecordEditor, object: nil)
             return true
         }
 
         guard store.recordEditor != nil, modifiers == [.command] else { return false }
         switch Int(event.keyCode) {
         case kVK_ANSI_S, kVK_Return, kVK_ANSI_KeypadEnter:
-            NotificationCenter.default.post(name: .quickVaultSaveRecordEditor, object: nil)
+            NotificationCenter.default.post(name: .benriSaveRecordEditor, object: nil)
             return true
         default:
             return false
@@ -278,6 +296,11 @@ final class PanelController: NSObject, NSWindowDelegate {
         if panel.isMiniaturized {
             panel.deminiaturize(nil)
         }
+
+        NSRunningApplication.current.activate(
+            options: [.activateAllWindows, .activateIgnoringOtherApps]
+        )
+        NSApp.activate(ignoringOtherApps: true)
         panel.orderFrontRegardless()
 
         if let attachedSheet = panel.attachedSheet {
@@ -292,7 +315,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.panel.makeKey()
-            NotificationCenter.default.post(name: .quickVaultFocusSearch, object: nil)
+            NotificationCenter.default.post(name: .benriClearSearchFocus, object: nil)
+            self.panel.makeFirstResponder(self.panel)
         }
     }
 
@@ -503,11 +527,16 @@ final class PanelController: NSObject, NSWindowDelegate {
         _ focusedElement: AXUIElement?,
         into application: NSRunningApplication
     ) -> Bool {
-        guard isPasteTargetActive(application), let focusedElement else {
-            pasteLogger.error(
-                "No valid captured AX element; clipboard copy kept, automatic paste cancelled"
-            )
+        guard isPasteTargetActive(application) else {
+            pasteLogger.error("Paste target changed before focus preparation; paste cancelled")
             return false
+        }
+
+        guard let focusedElement else {
+            pasteLogger.info(
+                "No captured AX element; target remains active, using its current responder"
+            )
+            return true
         }
 
         let applicationElement = AXUIElementCreateApplication(
@@ -527,12 +556,19 @@ final class PanelController: NSObject, NSWindowDelegate {
             "Focus restore appResult=\(applicationFocusResult.rawValue, privacy: .public) elementResult=\(elementFocusResult.rawValue, privacy: .public)"
         )
 
-        guard applicationFocusResult == .success || elementFocusResult == .success else {
-            pasteLogger.error("Unable to restore captured focus; paste cancelled")
+        if applicationFocusResult == .success || elementFocusResult == .success {
+            return isPasteTargetActive(application)
+        }
+
+        guard isPasteTargetActive(application) else {
+            pasteLogger.error("Paste target changed after focus restore failed; paste cancelled")
             return false
         }
 
-        return isPasteTargetActive(application)
+        pasteLogger.info(
+            "Unable to restore captured focus; target remains active, using its current responder"
+        )
+        return true
     }
 
     private func postPasteShortcut(

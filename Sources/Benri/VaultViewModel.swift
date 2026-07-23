@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-import QuickVaultCore
+import BenriCore
 
 struct RecordEditorContext: Identifiable, Equatable {
     let id = UUID()
@@ -109,6 +109,13 @@ final class VaultViewModel: ObservableObject {
 
     var canModifyVault: Bool {
         fatalErrorMessage == nil && fileStore != nil
+    }
+
+    var preferredCategoryID: UUID {
+        if payload.categories.contains(where: { $0.id == VaultDefaults.personalCategoryID }) {
+            return VaultDefaults.personalCategoryID
+        }
+        return sortedCategories.first?.id ?? VaultDefaults.personalCategoryID
     }
 
     func record(id: UUID) -> VaultRecord? {
@@ -239,10 +246,9 @@ final class VaultViewModel: ObservableObject {
         categoryEditor = CategoryEditorContext(categoryID: nil)
     }
 
-    func beginRenamingCategory(_ id: UUID) {
+    func beginEditingCategory(_ id: UUID) {
         guard canModifyVault,
-              let category = category(id: id),
-              !category.isBuiltIn
+              category(id: id) != nil
         else { return }
         categoryEditor = CategoryEditorContext(categoryID: id)
     }
@@ -262,9 +268,14 @@ final class VaultViewModel: ObservableObject {
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanName.isEmpty else { return }
 
-        let safeCategoryID = payload.categories.contains(where: { $0.id == categoryID })
-            ? categoryID
-            : VaultDefaults.otherCategoryID
+        let safeCategoryID: UUID
+        if payload.categories.contains(where: { $0.id == categoryID }) {
+            safeCategoryID = categoryID
+        } else {
+            safeCategoryID = payload.categories.first(where: {
+                $0.id == VaultDefaults.otherCategoryID
+            })?.id ?? preferredCategoryID
+        }
 
         let recordID: UUID
         if let id, let index = payload.records.firstIndex(where: { $0.id == id }) {
@@ -342,18 +353,22 @@ final class VaultViewModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: workItem)
     }
 
-    func saveCategory(id: UUID?, name: String) {
+    func saveCategory(id: UUID?, name: String, iconName: String) {
         guard canModifyVault else { return }
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanName.isEmpty else { return }
 
         if let id,
-           let index = payload.categories.firstIndex(where: { $0.id == id }),
-           !payload.categories[index].isBuiltIn {
+           let index = payload.categories.firstIndex(where: { $0.id == id }) {
             payload.categories[index].name = cleanName
+            payload.categories[index].iconName = iconName
         } else {
             let nextOrder = (payload.categories.map(\.sortOrder).max() ?? -1) + 1
-            let category = VaultCategory(name: cleanName, sortOrder: nextOrder)
+            let category = VaultCategory(
+                name: cleanName,
+                iconName: iconName,
+                sortOrder: nextOrder
+            )
             payload.categories.append(category)
             selectedCategoryID = category.id
         }
@@ -364,18 +379,19 @@ final class VaultViewModel: ObservableObject {
 
     func requestDeleteCategory(_ id: UUID) {
         guard canModifyVault,
-              let category = category(id: id),
-              !category.isBuiltIn
+              payload.categories.count > 1,
+              category(id: id) != nil
         else { return }
         alert = .confirmDeleteCategory(id)
     }
 
     func deleteCategory(_ id: UUID) {
-        guard canModifyVault else { return }
-        payload.deleteCustomCategory(id: id)
+        guard canModifyVault,
+              let replacementCategoryID = payload.deleteCategory(id: id)
+        else { return }
         if selectedCategoryID == id {
             closeRecordPanel()
-            selectedCategoryID = VaultDefaults.otherCategoryID
+            selectedCategoryID = replacementCategoryID
         }
         ensureSelection()
         persistChanges()

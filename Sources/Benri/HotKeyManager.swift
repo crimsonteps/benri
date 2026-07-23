@@ -83,7 +83,7 @@ final class HotKeyManager {
         let userData = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
         let handlerStatus = InstallEventHandler(
             GetApplicationEventTarget(),
-            quickVaultHotKeyHandler,
+            benriHotKeyHandler,
             1,
             &eventSpec,
             userData,
@@ -99,7 +99,7 @@ final class HotKeyManager {
     }
 }
 
-private let quickVaultHotKeyHandler: EventHandlerUPP = { _, _, userData in
+private let benriHotKeyHandler: EventHandlerUPP = { _, _, userData in
     guard let userData else { return OSStatus(eventNotHandledErr) }
     let manager = Unmanaged<HotKeyManager>.fromOpaque(userData).takeUnretainedValue()
     manager.invoke()

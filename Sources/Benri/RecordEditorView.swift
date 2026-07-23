@@ -1,4 +1,4 @@
-import QuickVaultCore
+import BenriCore
 import SwiftUI
 
 struct RecordEditorView: View {
@@ -20,7 +20,7 @@ struct RecordEditorView: View {
         _selectedCategoryID = State(
             initialValue: existing?.categoryID
                 ?? store.selectedCategoryID
-                ?? VaultDefaults.personalCategoryID
+                ?? store.preferredCategoryID
         )
         _content = State(initialValue: existing?.content ?? "")
     }
@@ -106,16 +106,16 @@ struct RecordEditorView: View {
             .padding(12)
         }
         .frame(width: 600, height: 460)
-        .quickVaultGlass(cornerRadius: 20)
+        .benriGlass(cornerRadius: 20)
         .onAppear {
             DispatchQueue.main.async {
                 nameIsFocused = true
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .quickVaultSaveRecordEditor)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .benriSaveRecordEditor)) { _ in
             save()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .quickVaultCancelRecordEditor)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .benriCancelRecordEditor)) { _ in
             cancel()
         }
     }

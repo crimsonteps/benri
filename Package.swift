@@ -8,19 +8,19 @@ let package = Package(
         .macOS(.v13)
     ],
     products: [
-        .library(name: "QuickVaultCore", targets: ["QuickVaultCore"]),
-        .executable(name: "Benri", targets: ["QuickVault"]),
-        .executable(name: "QuickVaultChecks", targets: ["QuickVaultChecks"])
+        .library(name: "BenriCore", targets: ["BenriCore"]),
+        .executable(name: "Benri", targets: ["Benri"]),
+        .executable(name: "BenriChecks", targets: ["BenriChecks"])
     ],
     targets: [
-        .target(name: "QuickVaultCore"),
+        .target(name: "BenriCore"),
         .executableTarget(
-            name: "QuickVault",
-            dependencies: ["QuickVaultCore"]
+            name: "Benri",
+            dependencies: ["BenriCore"]
         ),
         .executableTarget(
-            name: "QuickVaultChecks",
-            dependencies: ["QuickVaultCore"]
+            name: "BenriChecks",
+            dependencies: ["BenriCore"]
         )
     ],
     swiftLanguageModes: [.v5]

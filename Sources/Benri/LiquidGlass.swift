@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-private struct QuickVaultGlassModifier: ViewModifier {
+private struct BenriGlassModifier: ViewModifier {
     let cornerRadius: CGFloat
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
@@ -41,7 +41,7 @@ private struct QuickVaultGlassModifier: ViewModifier {
 }
 
 extension View {
-    func quickVaultGlass(cornerRadius: CGFloat) -> some View {
-        modifier(QuickVaultGlassModifier(cornerRadius: cornerRadius))
+    func benriGlass(cornerRadius: CGFloat) -> some View {
+        modifier(BenriGlassModifier(cornerRadius: cornerRadius))
     }
 }

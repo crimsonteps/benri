@@ -25,7 +25,7 @@ make app
 open dist/Benri.app
 ```
 
-Benri has no external Swift package dependencies. The automated checks are implemented as the `QuickVaultChecks` executable so they also work on minimal Command Line Tools installations.
+Benri has no external Swift package dependencies. The automated checks are implemented as the `BenriChecks` executable so they also work on minimal Command Line Tools installations.
 
 ## Pull requests
 

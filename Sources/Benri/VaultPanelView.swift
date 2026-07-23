@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-import QuickVaultCore
+import BenriCore
 import SwiftUI
 
 @MainActor
@@ -27,6 +27,7 @@ struct VaultPanelView: View {
     @ObservedObject var settings: AppSettings
     let openSettings: () -> Void
     let onClose: () -> Void
+    let onPasteRecord: (UUID) -> Void
     let onEditorDismissed: () -> Void
 
     private let sidebarExpanded = false
@@ -49,7 +50,7 @@ struct VaultPanelView: View {
                         style: .continuous
                     )
                 )
-                .quickVaultGlass(cornerRadius: VaultLayout.contentCornerRadius)
+                .benriGlass(cornerRadius: VaultLayout.contentCornerRadius)
                 .padding(VaultLayout.windowInset)
                 .ignoresSafeArea()
             } else {
@@ -89,7 +90,10 @@ struct VaultPanelView: View {
 
                 Divider().opacity(0.28)
 
-                RecordListView(store: store)
+                RecordListView(
+                    store: store,
+                    onPasteRecord: onPasteRecord
+                )
                     .frame(width: VaultLayout.recordListWidth)
             }
             .clipShape(
@@ -98,7 +102,7 @@ struct VaultPanelView: View {
                     style: .continuous
                 )
             )
-            .quickVaultGlass(cornerRadius: VaultLayout.navigationCornerRadius)
+            .benriGlass(cornerRadius: VaultLayout.navigationCornerRadius)
 
             if showsRecordPanel {
                 RecordPanelView(store: store)
@@ -113,10 +117,12 @@ struct VaultPanelView: View {
                             style: .continuous
                         )
                     )
-                    .quickVaultGlass(cornerRadius: VaultLayout.contentCornerRadius)
+                    .benriGlass(cornerRadius: VaultLayout.contentCornerRadius)
             }
         }
-        .padding(VaultLayout.windowInset)
+        .padding(.horizontal, VaultLayout.windowInset)
+        .padding(.top, VaultLayout.windowInset)
+        .padding(.bottom, VaultLayout.windowInset * 2)
         .ignoresSafeArea()
     }
 
@@ -138,7 +144,7 @@ struct VaultPanelView: View {
         case let .confirmDeleteCategory(id):
             return Alert(
                 title: Text("删除分类？"),
-                message: Text("分类中的记录会被移动到“其他”。"),
+                message: Text("分类中的记录会被移动到另一个可用分类。"),
                 primaryButton: .destructive(Text("删除")) {
                     store.deleteCategory(id)
                 },
@@ -182,7 +188,7 @@ private struct SidebarView: View {
                         ForEach(store.sortedCategories) { category in
                             SidebarRow(
                                 title: category.name,
-                                icon: iconName(for: category),
+                                icon: CategoryIconCatalog.iconName(for: category),
                                 count: store.recordCount(for: category.id),
                                 isCustom: !category.isBuiltIn,
                                 isSelected: store.selectedCategoryID == category.id,
@@ -193,14 +199,13 @@ private struct SidebarView: View {
                                 store.selectCategory(category.id)
                             }
                             .contextMenu {
-                                if !category.isBuiltIn {
-                                    Button("重命名") {
-                                        store.beginRenamingCategory(category.id)
-                                    }
-                                    Button("删除分类", role: .destructive) {
-                                        store.requestDeleteCategory(category.id)
-                                    }
+                                Button("编辑分类") {
+                                    store.beginEditingCategory(category.id)
                                 }
+                                Button("删除分类", role: .destructive) {
+                                    store.requestDeleteCategory(category.id)
+                                }
+                                .disabled(store.sortedCategories.count <= 1)
                             }
                             .id(ScrollTarget.category(category.id))
                         }
@@ -269,20 +274,6 @@ private struct SidebarView: View {
             .padding(.bottom, 14)
     }
 
-    private func iconName(for category: VaultCategory) -> String {
-        switch category.id {
-        case VaultDefaults.personalCategoryID:
-            return "person.crop.circle"
-        case VaultDefaults.workCategoryID:
-            return "briefcase"
-        case VaultDefaults.serverCategoryID:
-            return "server.rack"
-        case VaultDefaults.otherCategoryID:
-            return "tray"
-        default:
-            return "folder"
-        }
-    }
 }
 
 private struct SidebarRow: View {
@@ -346,6 +337,7 @@ private struct SidebarRow: View {
 
 private struct RecordListView: View {
     @ObservedObject var store: VaultViewModel
+    let onPasteRecord: (UUID) -> Void
     @FocusState private var searchIsFocused: Bool
 
     var body: some View {
@@ -374,6 +366,9 @@ private struct RecordListView: View {
                                 ) {
                                     releasePanelEditingFocus()
                                     store.selectRecord(record.id)
+                                } doubleClickAction: {
+                                    releasePanelEditingFocus()
+                                    onPasteRecord(record.id)
                                 } editAction: {
                                     releasePanelEditingFocus()
                                     store.beginEditingRecord(record.id)
@@ -394,13 +389,14 @@ private struct RecordListView: View {
             }
         }
         .background(Color.clear)
-        .onReceive(NotificationCenter.default.publisher(for: .quickVaultFocusSearch)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .benriFocusSearch)) { _ in
             searchIsFocused = true
-        }
-        .onAppear {
             DispatchQueue.main.async {
-                searchIsFocused = true
+                NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .benriClearSearchFocus)) { _ in
+            searchIsFocused = false
         }
         .onChange(of: store.searchText) { _ in
             store.closeRecordPanel()
@@ -460,6 +456,7 @@ private struct RecordRow: View {
     let isSelected: Bool
     let isKeyboardActive: Bool
     let action: () -> Void
+    let doubleClickAction: () -> Void
     let editAction: () -> Void
     let deleteAction: () -> Void
 
@@ -502,9 +499,17 @@ private struct RecordRow: View {
             }
         }
         .buttonStyle(.plain)
-        .contextMenu {
-            Button("编辑", action: editAction)
-            Button("删除", role: .destructive, action: deleteAction)
+        .simultaneousGesture(
+            TapGesture(count: 2)
+                .onEnded { doubleClickAction() }
+        )
+        .overlay {
+            FixedRecordContextMenu(
+                prepare: action,
+                editAction: editAction,
+                deleteAction: deleteAction
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onHover { isHovering = $0 }
     }

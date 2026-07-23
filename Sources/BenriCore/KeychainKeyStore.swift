@@ -20,7 +20,7 @@ public struct KeychainKeyStore: Sendable {
     public let account: String
 
     public init(
-        service: String = "com.crimsonteps.quickvault",
+        service: String = "com.crimsonteps.benri",
         account: String = "vault-key"
     ) {
         self.service = service

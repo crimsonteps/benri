@@ -1,7 +1,7 @@
 import CryptoKit
 import Darwin
 import Foundation
-import QuickVaultCore
+import BenriCore
 
 private struct CheckRunner {
     private(set) var failures = 0
@@ -95,6 +95,26 @@ private func checkSearchAndCategories() {
         mutablePayload.records.first?.categoryID == VaultDefaults.otherCategoryID,
         "删除自定义分类时记录迁移到其他"
     )
+
+    var builtInPayload = VaultPayload(records: [
+        VaultRecord(name: "工作账号", categoryID: VaultDefaults.workCategoryID)
+    ])
+    let replacementCategoryID = builtInPayload.deleteCategory(id: VaultDefaults.workCategoryID)
+    runner.expect(
+        replacementCategoryID == VaultDefaults.otherCategoryID
+            && !builtInPayload.categories.contains(where: {
+                $0.id == VaultDefaults.workCategoryID
+            })
+            && builtInPayload.records.first?.categoryID == VaultDefaults.otherCategoryID,
+        "内置分类也可删除并迁移记录"
+    )
+    runner.expect(
+        !builtInPayload.migrateToCurrentFormat()
+            && !builtInPayload.categories.contains(where: {
+                $0.id == VaultDefaults.workCategoryID
+            }),
+        "当前格式保留用户主动删除的内置分类"
+    )
 }
 
 private func checkLegacyMigration() throws {
@@ -143,18 +163,32 @@ private func checkLegacyMigration() throws {
         categories: [renamedPersonalCategory, customCategory]
     )
     _ = partialCategoriesPayload.migrateToCurrentFormat()
+    let migratedPersonalCategory = partialCategoriesPayload.categories.first(where: {
+        $0.id == VaultDefaults.personalCategoryID
+    })
     runner.expect(
-        partialCategoriesPayload.categories.contains(renamedPersonalCategory)
+        migratedPersonalCategory?.name == renamedPersonalCategory.name
+            && migratedPersonalCategory?.iconName == "person.crop.circle"
             && partialCategoriesPayload.categories.contains(customCategory)
             && partialCategoriesPayload.categories.count == VaultDefaults.categories.count + 1,
-        "迁移保留已有同 ID 分类与自定义分类"
+        "迁移保留已有分类名称并补齐内置图标"
+    )
+
+    var previousPayloadWithMissingCategories = VaultPayload(
+        formatVersion: VaultPayload.currentFormatVersion - 1,
+        categories: []
+    )
+    runner.expect(
+        previousPayloadWithMissingCategories.migrateToCurrentFormat()
+            && previousPayloadWithMissingCategories.categories == VaultDefaults.categories,
+        "旧版本升级时补回缺失的内置分类和图标"
     )
 
     var currentPayloadWithMissingCategories = VaultPayload(categories: [])
     runner.expect(
-        currentPayloadWithMissingCategories.migrateToCurrentFormat()
-            && currentPayloadWithMissingCategories.categories == VaultDefaults.categories,
-        "已升级版本也会补回缺失的内置分类"
+        !currentPayloadWithMissingCategories.migrateToCurrentFormat()
+            && currentPayloadWithMissingCategories.categories.isEmpty,
+        "当前格式不会恢复用户主动删除的分类"
     )
     runner.expect(!payload.migrateToCurrentFormat(), "完整当前格式无需重复迁移")
 
@@ -162,6 +196,7 @@ private func checkLegacyMigration() throws {
     let encodedText = String(decoding: encoded, as: UTF8.self)
     runner.expect(!encodedText.contains("\"fields\""), "新格式不再保存字段数组")
     runner.expect(encodedText.contains("\"contentType\""), "新格式保存内容类型")
+    runner.expect(encodedText.contains("\"iconName\""), "新格式保存分类图标")
 }
 
 private func checkCrypto() throws {
@@ -222,7 +257,7 @@ private func checkCrypto() throws {
 
 private func checkFileStore() throws {
     let directory = FileManager.default.temporaryDirectory
-        .appendingPathComponent("QuickVaultChecks-\(UUID().uuidString)", isDirectory: true)
+        .appendingPathComponent("BenriChecks-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directory) }
 
     let fileURL = directory.appendingPathComponent("vault.qv")
@@ -264,7 +299,7 @@ private func checkLocalKeyStore() throws {
     let keyStore = VaultKeyStore(
         fileURL: keyURL,
         legacyKeychain: KeychainKeyStore(
-            service: "com.crimsonteps.quickvault.checks.\(UUID().uuidString)"
+            service: "com.crimsonteps.benri.checks.\(UUID().uuidString)"
         )
     )
 

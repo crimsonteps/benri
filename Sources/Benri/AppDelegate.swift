@@ -1,24 +1,18 @@
 import AppKit
 import Combine
-import QuickVaultCore
+import BenriCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings = AppSettings()
     private let store: VaultViewModel = {
         let environment = ProcessInfo.processInfo.environment
-        let preparedStorage = environment["QUICKVAULT_DATA_FILE"]
-            .map {
-                PreparedVaultStorage(
-                    vaultFileURL: URL(fileURLWithPath: $0),
-                    legacyDirectoryToRemove: nil
-                )
-            }
-            ?? VaultStorage.prepareDefaultLocation()
-        let vaultFileURL = preparedStorage.vaultFileURL
-        let keychainService = environment["QUICKVAULT_KEYCHAIN_SERVICE"]
-            ?? "com.crimsonteps.quickvault"
-        let store = VaultViewModel(
+        let vaultFileURL = environment["BENRI_DATA_FILE"]
+            .map { URL(fileURLWithPath: $0) }
+            ?? VaultStorage.defaultVaultFileURL()
+        let keychainService = environment["BENRI_KEYCHAIN_SERVICE"]
+            ?? "com.crimsonteps.benri"
+        return VaultViewModel(
             vaultFileURL: vaultFileURL,
             keyStore: VaultKeyStore(
                 fileURL: vaultFileURL
@@ -27,11 +21,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 legacyKeychain: KeychainKeyStore(service: keychainService)
             )
         )
-        if store.fatalErrorMessage == nil,
-           let legacyDirectory = preparedStorage.legacyDirectoryToRemove {
-            VaultStorage.removeLegacyDirectory(legacyDirectory)
-        }
-        return store
     }()
     private var panelController: PanelController!
     private var hotKeyManager: HotKeyManager!
@@ -71,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidResignActive(_ notification: Notification) {
+        guard panelController.isVisible else { return }
         panelController.hide(restoringPreviousApplication: false)
     }
 
@@ -150,16 +140,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func makeStatusItemImage() -> NSImage {
-        let size = NSSize(width: 18, height: 18)
-        guard let appIcon = NSApp.applicationIconImage else {
-            return NSImage(size: size)
-        }
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
+            guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            context.saveGState()
+            defer { context.restoreGState() }
 
-        let image = NSImage(size: size, flipped: false) { rect in
-            appIcon.draw(in: rect)
+            let iconScale: CGFloat = 14.0 / 18.0
+            context.translateBy(x: rect.midX, y: rect.midY)
+            context.scaleBy(x: iconScale, y: iconScale)
+            context.translateBy(x: -rect.midX, y: -rect.midY)
+
+            let scale = rect.width / 18
+
+            let faceRect = NSRect(
+                x: 0.8 * scale,
+                y: 0.8 * scale,
+                width: 16.4 * scale,
+                height: 16.4 * scale
+            )
+            let face = NSBezierPath(
+                roundedRect: faceRect,
+                xRadius: 4.0 * scale,
+                yRadius: 4.0 * scale
+            )
+            face.lineWidth = 1.2 * scale
+            NSColor.black.setStroke()
+            face.stroke()
+
+            NSColor.black.setFill()
+            for x in [5.35, 11.13] {
+                let eyeRect = NSRect(
+                    x: x * scale,
+                    y: 9.15 * scale,
+                    width: 1.45 * scale,
+                    height: 2.7 * scale
+                )
+                NSBezierPath(
+                    roundedRect: eyeRect,
+                    xRadius: eyeRect.width / 2,
+                    yRadius: eyeRect.width / 2
+                ).fill()
+            }
+
+            let smile = NSBezierPath()
+            smile.move(to: NSPoint(x: 5.65 * scale, y: 7.4 * scale))
+            smile.curve(
+                to: NSPoint(x: 12.28 * scale, y: 7.4 * scale),
+                controlPoint1: NSPoint(x: 7.1 * scale, y: 5.4 * scale),
+                controlPoint2: NSPoint(x: 10.83 * scale, y: 5.4 * scale)
+            )
+            smile.lineWidth = 1.25 * scale
+            smile.lineCapStyle = .round
+            NSColor.black.setStroke()
+            smile.stroke()
             return true
         }
-        image.isTemplate = false
+        image.isTemplate = true
         image.accessibilityDescription = "Benri"
         return image
     }
