@@ -51,6 +51,8 @@ Everything stays on your Mac. Benri has no account system, analytics, network re
 2. Unzip it and move `Benri.app` to `/Applications`.
 3. Open Benri and optionally grant Accessibility permission when macOS asks.
 
+GitHub displays the SHA-256 digest next to the release asset, so no separate checksum file is required.
+
 Community builds are ad-hoc signed unless a release explicitly says it is notarized. On first launch, macOS may require you to Control-click the app, choose **Open**, and confirm once. You can also allow it from **System Settings → Privacy & Security**.
 
 ## Keyboard workflow
@@ -106,7 +108,7 @@ Useful commands:
 make build       # Debug build
 make test        # Run the zero-dependency checks
 make app         # Build an app for the current architecture
-make release     # Build a Universal 2 zip and SHA-256 checksum
+make release     # Build a Universal 2 release zip
 make clean
 ```
 
