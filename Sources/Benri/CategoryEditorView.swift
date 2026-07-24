@@ -25,55 +25,50 @@ struct CategoryEditorView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text(context.categoryID == nil ? "新建分类" : "编辑分类")
-                .font(.system(size: 18, weight: .bold))
+            TextField("分类名称", text: $name)
+                .textFieldStyle(.plain)
+                .focused($nameIsFocused)
+                .padding(.horizontal, 11)
+                .frame(height: 34)
+                .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 9))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 9)
+                        .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                }
 
-            VStack(alignment: .leading, spacing: 7) {
-                Text("分类名称")
-                    .font(.system(size: 12, weight: .semibold))
-                TextField("例如：常用账号", text: $name)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($nameIsFocused)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("分类图标")
-                    .font(.system(size: 12, weight: .semibold))
-
-                LazyVGrid(
-                    columns: Array(
-                        repeating: GridItem(.fixed(36), spacing: 8),
-                        count: 7
-                    ),
-                    alignment: .leading,
-                    spacing: 8
-                ) {
-                    ForEach(CategoryIconCatalog.options) { option in
-                        Button {
-                            selectedIconName = option.name
-                        } label: {
-                            Image(systemName: option.name)
-                                .font(.system(size: 14, weight: .medium))
-                                .frame(width: 34, height: 32)
-                                .background(
-                                    selectedIconName == option.name
-                                        ? Color.accentColor.opacity(0.2)
-                                        : Color.primary.opacity(0.045),
-                                    in: RoundedRectangle(cornerRadius: 8)
-                                )
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(
-                                            selectedIconName == option.name
-                                                ? Color.accentColor.opacity(0.7)
-                                                : Color.primary.opacity(0.08),
-                                            lineWidth: 1
-                                        )
-                                }
-                        }
-                        .buttonStyle(.plain)
-                        .help(option.label)
+            LazyVGrid(
+                columns: Array(
+                    repeating: GridItem(.fixed(36), spacing: 8),
+                    count: 7
+                ),
+                alignment: .leading,
+                spacing: 8
+            ) {
+                ForEach(CategoryIconCatalog.options) { option in
+                    Button {
+                        selectedIconName = option.name
+                    } label: {
+                        Image(systemName: option.name)
+                            .font(.system(size: 14, weight: .medium))
+                            .frame(width: 34, height: 32)
+                            .background(
+                                selectedIconName == option.name
+                                    ? Color.accentColor.opacity(0.2)
+                                    : Color.primary.opacity(0.045),
+                                in: RoundedRectangle(cornerRadius: 8)
+                            )
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(
+                                        selectedIconName == option.name
+                                            ? Color.accentColor.opacity(0.7)
+                                            : Color.primary.opacity(0.08),
+                                        lineWidth: 1
+                                    )
+                            }
                     }
+                    .buttonStyle(.plain)
+                    .help(option.label)
                 }
             }
 

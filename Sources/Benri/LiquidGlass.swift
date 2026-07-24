@@ -44,4 +44,13 @@ extension View {
     func benriGlass(cornerRadius: CGFloat) -> some View {
         modifier(BenriGlassModifier(cornerRadius: cornerRadius))
     }
+
+    @ViewBuilder
+    func benriSheetBackground() -> some View {
+        if #available(macOS 13.3, *) {
+            presentationBackground(.clear)
+        } else {
+            self
+        }
+    }
 }

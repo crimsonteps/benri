@@ -25,67 +25,48 @@ struct RecordEditorView: View {
         _content = State(initialValue: existing?.content ?? "")
     }
 
-    private var isEditing: Bool {
-        context.recordID != nil
-    }
-
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text(isEditing ? "编辑记录" : "新建记录")
-                    .font(.system(size: 19, weight: .bold))
-                Spacer()
-            }
-            .padding(16)
-
-            Divider().opacity(0.55)
-
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 7) {
-                    Text("记录名称")
-                        .font(.system(size: 12, weight: .semibold))
-                    TextField("例如：公司服务器", text: $name)
-                        .textFieldStyle(.plain)
-                        .focused($nameIsFocused)
-                        .padding(.horizontal, 11)
-                        .frame(height: 34)
-                        .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 9))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 9)
-                                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
-                        }
-                }
-
-                VStack(alignment: .leading, spacing: 7) {
-                    Text("分类")
-                        .font(.system(size: 12, weight: .semibold))
-                    Picker("分类", selection: $selectedCategoryID) {
-                        ForEach(store.sortedCategories) { category in
-                            Text(category.name).tag(category.id)
-                        }
+            VStack(alignment: .leading, spacing: 12) {
+                TextField("记录名称", text: $name)
+                    .textFieldStyle(.plain)
+                    .focused($nameIsFocused)
+                    .padding(.horizontal, 11)
+                    .frame(height: 34)
+                    .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 9))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 9)
+                            .stroke(Color.primary.opacity(0.1), lineWidth: 1)
                     }
-                    .labelsHidden()
-                    .frame(maxWidth: 220, alignment: .leading)
-                }
 
-                VStack(alignment: .leading, spacing: 7) {
-                    TextEditor(text: $content)
-                        .font(.system(size: 13))
-                        .lineSpacing(4)
-                        .scrollContentBackground(.hidden)
-                        .padding(5)
-                        .frame(minHeight: 140, maxHeight: .infinity)
-                        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
-                        .background(ScrollIndicatorHider(updateToken: content.utf16.count))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
-                        }
+                Picker("分类", selection: $selectedCategoryID) {
+                    ForEach(store.sortedCategories) { category in
+                        Label(
+                            category.name,
+                            systemImage: CategoryIconCatalog.iconName(for: category)
+                        )
+                        .tag(category.id)
+                    }
                 }
+                .labelsHidden()
+                .frame(maxWidth: 220, alignment: .leading)
+
+                TextEditor(text: $content)
+                    .font(.system(size: 13))
+                    .lineSpacing(4)
+                    .scrollContentBackground(.hidden)
+                    .padding(5)
+                    .frame(minHeight: 140, maxHeight: .infinity)
+                    .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
+                    .background(ScrollIndicatorHider(updateToken: content.utf16.count))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                    }
             }
             .padding(16)
             .frame(maxHeight: .infinity)
