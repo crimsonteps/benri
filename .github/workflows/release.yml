@@ -11,42 +11,143 @@ permissions:
 jobs:
   release:
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    env:
+      SIGNING_CERTIFICATE_P12: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_P12 }}
+      SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_PASSWORD }}
+      SIGNING_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_IDENTITY }}
+      NOTARY_APPLE_ID: ${{ secrets.APPLE_ID }}
+      NOTARY_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      NOTARY_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
+
+      - name: Verify tag and app version match
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
+          if [[ "$TAG_VERSION" != "$APP_VERSION" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match app version $APP_VERSION"
+            exit 1
+          fi
+
+      - name: Require Developer ID and notarization secrets
+        shell: bash
+        run: |
+          required=(
+            SIGNING_CERTIFICATE_P12
+            SIGNING_CERTIFICATE_PASSWORD
+            SIGNING_IDENTITY
+            NOTARY_APPLE_ID
+            NOTARY_TEAM_ID
+            NOTARY_PASSWORD
+          )
+          for name in "${required[@]}"; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing required release secret: $name"
+              exit 1
+            fi
+          done
+
+      - name: Import Developer ID certificate
+        shell: bash
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/benri-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          CERTIFICATE_PATH="$RUNNER_TEMP/benri-signing.p12"
+
+          printf '%s' "$SIGNING_CERTIFICATE_P12" | /usr/bin/base64 -D > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$SIGNING_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
 
       - name: Run checks
         run: make test
 
-      - name: Build Universal 2 release
+      - name: Build signed Universal 2 release
         run: make release
+        env:
+          CODESIGN_IDENTITY: ${{ env.SIGNING_IDENTITY }}
 
-      - name: Verify release assets
+      - name: Verify signed archive
+        shell: bash
         run: |
-          lipo -archs dist/Benri.app/Contents/MacOS/Benri
-          cd dist
-          shasum -a 256 -c "Benri-${GITHUB_REF_NAME}-macOS-universal.zip.sha256"
+          APP="dist/Benri.app"
+          ZIP="dist/Benri-${GITHUB_REF_NAME}-macOS-universal.zip"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dvvv "$APP"
+          ARCHS="$(lipo -archs "$APP/Contents/MacOS/Benri")"
+          [[ "$ARCHS" == *arm64* && "$ARCHS" == *x86_64* ]]
+          test -f "$ZIP"
+
+      - name: Notarize and staple
+        shell: bash
+        run: |
+          APP="dist/Benri.app"
+          ZIP="dist/Benri-${GITHUB_REF_NAME}-macOS-universal.zip"
+
+          xcrun notarytool submit "$ZIP" \
+            --apple-id "$NOTARY_APPLE_ID" \
+            --team-id "$NOTARY_TEAM_ID" \
+            --password "$NOTARY_PASSWORD" \
+            --wait
+          xcrun stapler staple "$APP"
+          xcrun stapler validate "$APP"
+
+          rm -f "$ZIP"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
+
+      - name: Verify public release artifact
+        shell: bash
+        run: |
+          APP="dist/Benri.app"
+          ZIP="dist/Benri-${GITHUB_REF_NAME}-macOS-universal.zip"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          spctl --assess --type execute --verbose=2 "$APP"
+          shasum -a 256 "$ZIP"
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           ASSET="dist/Benri-${GITHUB_REF_NAME}-macOS-universal.zip"
-          CHECKSUM="$ASSET.sha256"
           NOTES="docs/releases/${GITHUB_REF_NAME}.md"
 
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" "$ASSET" "$CHECKSUM" --clobber
+            gh release upload "$GITHUB_REF_NAME" "$ASSET" --clobber
           elif [[ -f "$NOTES" ]]; then
-            gh release create "$GITHUB_REF_NAME" "$ASSET" "$CHECKSUM" \
+            gh release create "$GITHUB_REF_NAME" "$ASSET" \
               --verify-tag \
               --title "Benri $GITHUB_REF_NAME" \
               --notes-file "$NOTES"
           else
-            gh release create "$GITHUB_REF_NAME" "$ASSET" "$CHECKSUM" \
+            gh release create "$GITHUB_REF_NAME" "$ASSET" \
               --verify-tag \
               --title "Benri $GITHUB_REF_NAME" \
               --generate-notes
+          fi
+
+      - name: Remove temporary signing keychain
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${KEYCHAIN_PATH:-}" ]]; then
+            security delete-keychain "$KEYCHAIN_PATH" || true
           fi

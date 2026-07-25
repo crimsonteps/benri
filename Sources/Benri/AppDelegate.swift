@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindowController: SettingsWindowController!
     private var hotKeyFailureItem: NSMenuItem?
     private var cancellables = Set<AnyCancellable>()
+    private lazy var vaultMaintenanceController = VaultMaintenanceController(store: store)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -84,6 +85,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindowController.show()
     }
 
+    @objc private func checkForUpdates() {
+        guard let url = URL(string: "https://github.com/crimsonteps/benri/releases/latest") else {
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc private func backupVault() {
+        vaultMaintenanceController.backupVault()
+    }
+
+    @objc private func restoreVault() {
+        vaultMaintenanceController.restoreVault()
+    }
+
+    @objc private func exportDiagnostics() {
+        vaultMaintenanceController.exportDiagnostics()
+    }
+
     @objc private func closeFrontWindow(_ sender: Any?) {
         let window = NSApp.keyWindow
             ?? NSApp.mainWindow
@@ -109,6 +129,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "打开 Benri", action: #selector(openPanel), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "新建记录", action: #selector(newRecord), keyEquivalent: "n"))
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "备份保险库…", action: #selector(backupVault), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "恢复保险库…", action: #selector(restoreVault), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "导出诊断信息…", action: #selector(exportDiagnostics), keyEquivalent: ""))
 
         let failureItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         failureItem.isEnabled = false
@@ -117,6 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotKeyFailureItem = failureItem
 
         menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "检查更新…", action: #selector(checkForUpdates), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "设置…", action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(.separator())
         let quitItem = NSMenuItem(
@@ -264,6 +289,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             action: #selector(openSettings),
             keyEquivalent: ","
         ).target = self
+        appMenu.addItem(
+            withTitle: "检查更新…",
+            action: #selector(checkForUpdates),
+            keyEquivalent: ""
+        ).target = self
         appMenu.addItem(.separator())
         let hideItem = appMenu.addItem(
             withTitle: "隐藏 Benri",
@@ -302,6 +332,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             withTitle: "新建记录",
             action: #selector(newRecord),
             keyEquivalent: "n"
+        ).target = self
+        fileMenu.addItem(.separator())
+        fileMenu.addItem(
+            withTitle: "备份保险库…",
+            action: #selector(backupVault),
+            keyEquivalent: ""
+        ).target = self
+        fileMenu.addItem(
+            withTitle: "恢复保险库…",
+            action: #selector(restoreVault),
+            keyEquivalent: ""
+        ).target = self
+        fileMenu.addItem(
+            withTitle: "导出诊断信息…",
+            action: #selector(exportDiagnostics),
+            keyEquivalent: ""
         ).target = self
         fileMenu.addItem(.separator())
         fileMenu.addItem(

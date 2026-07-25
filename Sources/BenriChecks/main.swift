@@ -318,6 +318,140 @@ private func checkLocalKeyStore() throws {
     runner.expect(!FileManager.default.fileExists(atPath: keyURL.path), "重置会删除本地密钥")
 }
 
+private func checkBackupArchive() throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("BenriBackupChecks-\(UUID().uuidString)", isDirectory: true)
+    let sourceDirectory = rootDirectory.appendingPathComponent("Source", isDirectory: true)
+    let restoredDirectory = rootDirectory.appendingPathComponent("Restored", isDirectory: true)
+    let backupURL = rootDirectory.appendingPathComponent(
+        "Benri Test.\(VaultBackupArchive.fileExtension)",
+        isDirectory: true
+    )
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let sourceVaultURL = sourceDirectory.appendingPathComponent("vault.qv")
+    let sourceKeyURL = sourceDirectory.appendingPathComponent("vault.key")
+    let sourceKey = VaultCrypto.generateKeyData()
+    let sourcePayload = VaultPayload(records: [
+        VaultRecord(
+            name: "备份记录",
+            categoryID: VaultDefaults.personalCategoryID,
+            content: "backup-secret",
+            createdAt: fixedDate,
+            updatedAt: fixedDate
+        )
+    ])
+    try VaultFileStore(fileURL: sourceVaultURL, keyData: sourceKey).save(sourcePayload)
+    try FileManager.default.createDirectory(
+        at: sourceDirectory,
+        withIntermediateDirectories: true,
+        attributes: [.posixPermissions: 0o700]
+    )
+    try sourceKey.write(to: sourceKeyURL, options: [.atomic])
+    try FileManager.default.setAttributes(
+        [.posixPermissions: 0o600],
+        ofItemAtPath: sourceKeyURL.path
+    )
+
+    let manifest = try VaultBackupArchive.create(
+        at: backupURL,
+        vaultFileURL: sourceVaultURL,
+        keyFileURL: sourceKeyURL,
+        appVersion: "1.1.0 (2)",
+        createdAt: fixedDate
+    )
+    let manifestText = try String(
+        contentsOf: backupURL.appendingPathComponent("manifest.json"),
+        encoding: .utf8
+    )
+    runner.expect(
+        manifest.recordCount == 1
+            && !manifestText.contains("备份记录")
+            && !manifestText.contains("backup-secret"),
+        "备份清单记录数据规模但不保存名称或正文"
+    )
+
+    let validated = try VaultBackupArchive.validate(at: backupURL)
+    runner.expect(validated.payload == sourcePayload, "Benri 备份可完整校验和解密")
+
+    let packageAttributes = try FileManager.default.attributesOfItem(atPath: backupURL.path)
+    let backupVaultAttributes = try FileManager.default.attributesOfItem(
+        atPath: backupURL.appendingPathComponent("vault.qv").path
+    )
+    let backupKeyAttributes = try FileManager.default.attributesOfItem(
+        atPath: backupURL.appendingPathComponent("vault.key").path
+    )
+    runner.expect(
+        packageAttributes[.posixPermissions] as? NSNumber == NSNumber(value: 0o700),
+        "备份包目录权限为 0700"
+    )
+    runner.expect(
+        backupVaultAttributes[.posixPermissions] as? NSNumber == NSNumber(value: 0o600)
+            && backupKeyAttributes[.posixPermissions] as? NSNumber == NSNumber(value: 0o600),
+        "备份包内数据和密钥权限为 0600"
+    )
+
+    let restoredVaultURL = restoredDirectory.appendingPathComponent("vault.qv")
+    let restoredKeyURL = restoredDirectory.appendingPathComponent("vault.key")
+    let oldKey = VaultCrypto.generateKeyData()
+    try VaultFileStore(fileURL: restoredVaultURL, keyData: oldKey).save(
+        VaultPayload(records: [
+            VaultRecord(
+                name: "将被替换",
+                categoryID: VaultDefaults.otherCategoryID
+            )
+        ])
+    )
+    try oldKey.write(to: restoredKeyURL, options: [.atomic])
+
+    let restoreResult = try VaultBackupArchive.restore(
+        from: backupURL,
+        toVaultFileURL: restoredVaultURL,
+        keyFileURL: restoredKeyURL
+    )
+    let restoredKey = try Data(contentsOf: restoredKeyURL)
+    let restoredPayload = try VaultFileStore(
+        fileURL: restoredVaultURL,
+        keyData: restoredKey
+    ).load()
+    let restoredVaultAttributes = try FileManager.default.attributesOfItem(
+        atPath: restoredVaultURL.path
+    )
+    let restoredKeyAttributes = try FileManager.default.attributesOfItem(
+        atPath: restoredKeyURL.path
+    )
+    runner.expect(
+        restoreResult.payload == sourcePayload
+            && restoredPayload == sourcePayload
+            && restoredKey == sourceKey,
+        "恢复会成对替换保险库和密钥"
+    )
+    runner.expect(
+        restoredVaultAttributes[.posixPermissions] as? NSNumber == NSNumber(value: 0o600)
+            && restoredKeyAttributes[.posixPermissions] as? NSNumber == NSNumber(value: 0o600),
+        "恢复后的保险库和密钥权限为 0600"
+    )
+
+    try VaultBackupArchive.create(
+        at: backupURL,
+        vaultFileURL: sourceVaultURL,
+        keyFileURL: sourceKeyURL,
+        appVersion: "1.1.0 (2)",
+        createdAt: fixedDate
+    )
+    let overwrittenBackup = try VaultBackupArchive.validate(at: backupURL)
+    runner.expect(
+        overwrittenBackup.payload == sourcePayload,
+        "覆盖已有备份时仍保持完整可用"
+    )
+
+    let backupKeyURL = backupURL.appendingPathComponent("vault.key")
+    try VaultCrypto.generateKeyData().write(to: backupKeyURL, options: [.atomic])
+    runner.expectThrows("密钥不匹配的备份会被拒绝") {
+        _ = try VaultBackupArchive.validate(at: backupURL)
+    }
+}
+
 do {
     try checkModelRoundTrip()
     checkSearchAndCategories()
@@ -325,6 +459,7 @@ do {
     try checkCrypto()
     try checkFileStore()
     try checkLocalKeyStore()
+    try checkBackupArchive()
 } catch {
     print("✗ 测试运行异常：\(error.localizedDescription)")
     exit(1)

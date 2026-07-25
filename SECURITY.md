@@ -25,4 +25,6 @@ Reports are handled on a best-effort basis. Confirmed issues will be assessed, f
 
 ## Security model
 
-Benri is a local convenience utility. Its encrypted vault and local key are stored under the same macOS user account with restrictive file permissions. This protects against casual disclosure of the vault file, but it is not designed to protect data from software or people that already control the logged-in account. Clipboard contents are also subject to normal macOS clipboard access.
+Benri is a local convenience utility. Its encrypted vault and local key are stored under the same macOS user account with restrictive file permissions. This protects against casual disclosure of the vault file, but it is not designed to protect data from software or people that already control the logged-in account.
+
+`.benribackup` packages contain both the encrypted vault and its matching key so they can be restored on another Mac. They use restrictive local permissions but are not password-protected; anyone who obtains a backup package can recover its contents. Clipboard contents are also subject to normal macOS clipboard access.

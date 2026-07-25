@@ -11,7 +11,7 @@ body:
     id: version
     attributes:
       label: Benri version
-      placeholder: "1.0.0"
+      placeholder: "1.1.0"
     validations:
       required: true
 
@@ -53,7 +53,7 @@ body:
     id: context
     attributes:
       label: Additional context
-      description: Add screenshots or sanitized logs if useful. Never attach vault.qv, vault.key, passwords, tokens, or private records.
+      description: Add screenshots or the report from File → Export Diagnostics if useful. Never attach vault.qv, vault.key, .benribackup files, passwords, tokens, or private records.
 
   - type: checkboxes
     id: safety

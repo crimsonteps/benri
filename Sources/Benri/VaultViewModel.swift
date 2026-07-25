@@ -12,6 +12,11 @@ struct CategoryEditorContext: Identifiable, Equatable {
     let categoryID: UUID?
 }
 
+struct VaultRestoreResult {
+    let backup: ValidatedVaultBackup
+    let recoveryBackupURL: URL?
+}
+
 enum KeyboardPane {
     case categories
     case records
@@ -52,6 +57,20 @@ enum VaultBootstrapError: Error, LocalizedError {
     }
 }
 
+enum VaultOperationError: Error, LocalizedError {
+    case unsavedChanges
+    case restoreFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .unsavedChanges:
+            return "当前修改尚未成功保存，请先解决保存错误。"
+        case .restoreFailed:
+            return "备份已写入，但 Benri 无法重新打开恢复后的保险库。"
+        }
+    }
+}
+
 @MainActor
 final class VaultViewModel: ObservableObject {
     @Published private(set) var payload = VaultPayload.empty
@@ -67,6 +86,10 @@ final class VaultViewModel: ObservableObject {
     @Published var isEditingRecordName = false
 
     let vaultFileURL: URL
+
+    var keyFileURL: URL {
+        keyStore.fileURL
+    }
 
     private let keyStore: VaultKeyStore
     private var fileStore: VaultFileStore?
@@ -419,6 +442,58 @@ final class VaultViewModel: ObservableObject {
         NSWorkspace.shared.activateFileViewerSelecting([vaultFileURL])
     }
 
+    func createBackup(
+        at destinationURL: URL,
+        appVersion: String
+    ) throws -> VaultBackupManifest {
+        flushPendingRecordSave()
+        guard !hasUnsavedChanges else { throw VaultOperationError.unsavedChanges }
+
+        return try VaultBackupArchive.create(
+            at: destinationURL,
+            vaultFileURL: vaultFileURL,
+            keyFileURL: keyStore.fileURL,
+            appVersion: appVersion
+        )
+    }
+
+    func validateBackup(at backupURL: URL) throws -> ValidatedVaultBackup {
+        try VaultBackupArchive.validate(at: backupURL)
+    }
+
+    func restoreBackup(
+        from backupURL: URL,
+        appVersion: String
+    ) throws -> VaultRestoreResult {
+        flushPendingRecordSave()
+        guard !hasUnsavedChanges else { throw VaultOperationError.unsavedChanges }
+
+        let recoveryBackupURL = try createRecoveryBackupIfPossible(appVersion: appVersion)
+        closeRecordPanel()
+        dismissEditors()
+
+        let restoredBackup = try VaultBackupArchive.restore(
+            from: backupURL,
+            toVaultFileURL: vaultFileURL,
+            keyFileURL: keyStore.fileURL
+        )
+        selectedCategoryID = nil
+        selectedRecordID = nil
+        searchText = ""
+        keyboardPane = .records
+        recordPanelMode = .closed
+        bootstrap()
+
+        guard fatalErrorMessage == nil else {
+            throw VaultOperationError.restoreFailed
+        }
+
+        return VaultRestoreResult(
+            backup: restoredBackup,
+            recoveryBackupURL: recoveryBackupURL
+        )
+    }
+
     func requestReset() {
         alert = .confirmReset
     }
@@ -489,6 +564,41 @@ final class VaultViewModel: ObservableObject {
             fileStore = nil
             fatalErrorMessage = error.localizedDescription
         }
+    }
+
+    private func createRecoveryBackupIfPossible(appVersion: String) throws -> URL? {
+        guard fatalErrorMessage == nil,
+              FileManager.default.fileExists(atPath: vaultFileURL.path),
+              FileManager.default.fileExists(atPath: keyStore.fileURL.path)
+        else { return nil }
+
+        let backupsDirectory = vaultFileURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("Backups", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: backupsDirectory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o700],
+            ofItemAtPath: backupsDirectory.path
+        )
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd HH.mm.ss.SSS"
+        let backupURL = backupsDirectory.appendingPathComponent(
+            "Before restore \(formatter.string(from: Date())).\(VaultBackupArchive.fileExtension)",
+            isDirectory: true
+        )
+
+        try VaultBackupArchive.create(
+            at: backupURL,
+            vaultFileURL: vaultFileURL,
+            keyFileURL: keyStore.fileURL,
+            appVersion: appVersion
+        )
+        return backupURL
     }
 
     private func persistChanges() {

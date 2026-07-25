@@ -38,6 +38,9 @@ Everything stays on your Mac. Benri has no account system, analytics, network re
 - Copy-only fallback when Accessibility permission is unavailable
 - Light, dark, reduced-transparency, and macOS 26 Liquid Glass support
 - Local AES-256-GCM encrypted storage
+- Validated encrypted-vault backup and restore packages
+- User-exported diagnostics with no record names or content
+- Manual update checking through the official GitHub Releases page
 - No Dock icon, network access, telemetry, or cloud synchronization
 
 ## Requirements
@@ -53,7 +56,7 @@ Everything stays on your Mac. Benri has no account system, analytics, network re
 
 GitHub displays the SHA-256 digest next to the release asset, so no separate checksum file is required.
 
-Community builds are ad-hoc signed unless a release explicitly says it is notarized. On first launch, macOS may require you to Control-click the app, choose **Open**, and confirm once. You can also allow it from **System Settings → Privacy & Security**.
+Official releases starting with v1.1.0 are Developer ID signed and notarized. Community builds remain locally or ad-hoc signed and may require you to Control-click the app, choose **Open**, and confirm once.
 
 ## Keyboard workflow
 
@@ -84,9 +87,12 @@ Benri stores its data in its own Application Support directory:
 - The randomly generated 32-byte key and vault file are both restricted to the current user with `0600` permissions; the containing directory uses `0700`.
 - Benri does not send data over the network.
 - Benri never silently replaces a vault that it cannot decrypt.
+- Backups are validated before restore, and Benri keeps a recovery backup before replacing a healthy vault.
 - Resetting the vault permanently deletes the encrypted data and its local key.
 
-The key is stored under the same macOS user account to avoid a password or Keychain prompt on every launch. This protects data at rest from casual disclosure, but it does **not** protect against software or a person that already has access to your logged-in account. Content copied from Benri also enters the macOS clipboard and follows normal system clipboard behavior. Benri is a convenience utility, not a replacement for a dedicated password manager.
+The key is stored under the same macOS user account to avoid a password or Keychain prompt on every launch. This protects data at rest from casual disclosure, but it does **not** protect against software or a person that already has access to your logged-in account. A `.benribackup` package includes the matching key so it can restore the vault on another Mac; protect backup files as carefully as the original data. Content copied from Benri also enters the macOS clipboard and follows normal system clipboard behavior. Benri is a convenience utility, not a replacement for a dedicated password manager.
+
+Use **File → Back Up Vault…**, **Restore Vault…**, or **Export Diagnostics…**. Diagnostic reports contain version, system, permission, and file metadata only; they intentionally exclude record names and content.
 
 Please report security issues through [GitHub's private security advisory form](https://github.com/crimsonteps/benri/security/advisories/new), not a public issue. See [SECURITY.md](SECURITY.md).
 
@@ -126,7 +132,7 @@ Scripts/                   App and release packaging
 
 ## Scope
 
-Version 1 focuses on a reliable local workflow. Cloud sync, browser autofill, import/export, password generation, launch at login, and cross-platform support are not currently included.
+Version 1 focuses on a reliable local workflow. Cloud sync, browser autofill, plaintext import/export, password generation, launch at login, and cross-platform support are not currently included.
 
 ## Contributing
 

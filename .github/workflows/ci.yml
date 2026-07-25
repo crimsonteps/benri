@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Show Swift version
         run: swift --version
@@ -27,6 +27,12 @@ jobs:
         run: make app
 
       - name: Verify app bundle
+        shell: bash
         run: |
           codesign --verify --deep --strict --verbose=2 dist/Benri.app
           file dist/Benri.app/Contents/MacOS/Benri
+          SOURCE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
+          APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' dist/Benri.app/Contents/Info.plist)"
+          BUNDLE_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' dist/Benri.app/Contents/Info.plist)"
+          [[ "$SOURCE_VERSION" == "$APP_VERSION" ]]
+          [[ "$BUNDLE_IDENTIFIER" == "com.crimsonteps.benri" ]]
