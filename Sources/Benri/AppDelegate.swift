@@ -4,24 +4,13 @@ import BenriCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let settings = AppSettings()
-    private let store: VaultViewModel = {
-        let environment = ProcessInfo.processInfo.environment
-        let vaultFileURL = environment["BENRI_DATA_FILE"]
-            .map { URL(fileURLWithPath: $0) }
-            ?? VaultStorage.defaultVaultFileURL()
-        let keychainService = environment["BENRI_KEYCHAIN_SERVICE"]
-            ?? "com.crimsonteps.benri"
-        return VaultViewModel(
-            vaultFileURL: vaultFileURL,
-            keyStore: VaultKeyStore(
-                fileURL: vaultFileURL
-                    .deletingLastPathComponent()
-                    .appendingPathComponent("vault.key"),
-                legacyKeychain: KeychainKeyStore(service: keychainService)
-            )
-        )
-    }()
+    private static let legacyCleanupPendingKey = "legacyQuickVaultCleanupPending.v1"
+
+    private let settings: AppSettings
+    private let store: VaultViewModel
+    private let startupFailureMessage: String?
+    private let startupWarningMessage: String?
+    private var vaultFileLock: VaultFileLock?
     private var panelController: PanelController!
     private var hotKeyManager: HotKeyManager!
     private var statusItem: NSStatusItem?
@@ -30,8 +19,144 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellables = Set<AnyCancellable>()
     private lazy var vaultMaintenanceController = VaultMaintenanceController(store: store)
 
+    override init() {
+        let environment = ProcessInfo.processInfo.environment
+        let allowsLegacyMigration = environment["BENRI_DATA_FILE"] == nil
+            && environment["BENRI_KEYCHAIN_SERVICE"] == nil
+        let defaultVaultFileURL = Self.canonicalFileURL(
+            VaultStorage.defaultVaultFileURL()
+        )
+        let configuredVaultFileURL = environment["BENRI_DATA_FILE"]
+            .map { URL(fileURLWithPath: $0) }
+            ?? defaultVaultFileURL
+        let vaultFileURL = Self.canonicalFileURL(configuredVaultFileURL)
+        let usesDefaultVault = vaultFileURL.deletingLastPathComponent().path
+            == defaultVaultFileURL.deletingLastPathComponent().path
+        let keychainService = environment["BENRI_KEYCHAIN_SERVICE"]
+            ?? "com.crimsonteps.benri"
+        let keyStore = VaultKeyStore(
+            fileURL: vaultFileURL
+                .deletingLastPathComponent()
+                .appendingPathComponent("vault.key"),
+            legacyKeychain: KeychainKeyStore(service: keychainService)
+        )
+        var startupFailureMessage: String?
+        var startupWarningMessage: String?
+        var acquiredLock: VaultFileLock?
+        let legacyVaultFileURL = VaultStorage.legacyDirectoryURL()
+            .appendingPathComponent("vault.qv")
+        let requiresLegacyMigration = allowsLegacyMigration
+            && !FileManager.default.fileExists(atPath: vaultFileURL.path)
+            && FileManager.default.fileExists(atPath: legacyVaultFileURL.path)
+
+        if usesDefaultVault,
+           let existingApplication = Self.runningBenriWithoutVaultLock() {
+            existingApplication.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+            startupFailureMessage = "另一个旧版 Benri 正在使用默认数据目录。请先退出旧版，再重新打开当前版本。"
+        }
+
+        if requiresLegacyMigration,
+           startupFailureMessage == nil,
+           let existingApplication = Self.runningLegacyVaultApplication() {
+            existingApplication.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+            startupFailureMessage = "旧版 Benri 仍在运行。请先退出旧版，再重新打开当前版本。"
+        }
+
+        if startupFailureMessage == nil {
+            do {
+                acquiredLock = try VaultFileLock.acquire(
+                    forVaultAt: vaultFileURL,
+                    lockDirectoryURL: VaultStorage.lockDirectoryURL()
+                )
+            } catch {
+                startupFailureMessage = error.localizedDescription
+            }
+        }
+
+        if startupFailureMessage == nil, allowsLegacyMigration {
+            let legacyKeychain = KeychainKeyStore(
+                service: VaultStorage.legacyBundleIdentifier
+            )
+            do {
+                let outcome = try LegacyInstallationMigrator.migrateIfNeeded(
+                    legacyDirectoryURL: VaultStorage.legacyDirectoryURL(),
+                    destinationDirectoryURL: vaultFileURL.deletingLastPathComponent(),
+                    appVersion: Self.applicationVersion,
+                    legacyKeychainKey: { try legacyKeychain.loadKey() },
+                    legacySourceIsInactive: {
+                        Self.runningLegacyVaultApplication() == nil
+                    }
+                )
+                LegacyPreferencesMigrator.migrateIfNeeded(
+                    legacyDomainName: VaultStorage.legacyBundleIdentifier
+                )
+                switch outcome {
+                case .migrated:
+                    try? legacyKeychain.deleteKey()
+                    UserDefaults.standard.removePersistentDomain(
+                        forName: VaultStorage.legacyBundleIdentifier
+                    )
+                    UserDefaults.standard.removeObject(
+                        forKey: Self.legacyCleanupPendingKey
+                    )
+                case .currentVaultAlreadyExists:
+                    if UserDefaults.standard.bool(forKey: Self.legacyCleanupPendingKey),
+                       FileManager.default.fileExists(
+                        atPath: VaultStorage.legacyDirectoryURL().path
+                       ) {
+                        startupWarningMessage = "旧 QuickVault 数据目录仍未清理。Benri 已保留它以避免误删其他文件，请确认旧版已退出后手动检查该目录。"
+                    } else {
+                        UserDefaults.standard.removeObject(
+                            forKey: Self.legacyCleanupPendingKey
+                        )
+                    }
+                case .noLegacyVault:
+                    UserDefaults.standard.removeObject(
+                        forKey: Self.legacyCleanupPendingKey
+                    )
+                }
+            } catch let error as LegacyInstallationMigrationError {
+                if case .legacyCleanupFailed = error {
+                    LegacyPreferencesMigrator.migrateIfNeeded(
+                        legacyDomainName: VaultStorage.legacyBundleIdentifier
+                    )
+                    UserDefaults.standard.set(
+                        true,
+                        forKey: Self.legacyCleanupPendingKey
+                    )
+                    startupWarningMessage = error.localizedDescription
+                } else {
+                    startupFailureMessage = "迁移旧版 QuickVault 数据失败。旧数据未被改动。\n\n\(error.localizedDescription)"
+                }
+            } catch {
+                startupFailureMessage = "迁移旧版 QuickVault 数据失败。旧数据未被改动。\n\n\(error.localizedDescription)"
+            }
+        }
+
+        settings = AppSettings()
+        store = VaultViewModel(
+            vaultFileURL: vaultFileURL,
+            keyStore: keyStore,
+            startupFailureMessage: startupFailureMessage
+        )
+        self.startupFailureMessage = startupFailureMessage
+        self.startupWarningMessage = startupWarningMessage
+        vaultFileLock = acquiredLock
+        super.init()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        if let startupFailureMessage {
+            showStartupAlert(
+                title: "Benri 无法启动",
+                message: startupFailureMessage,
+                style: .critical
+            )
+            NSApp.terminate(self)
+            return
+        }
+
         configureAppearance()
         configureMainMenu()
         panelController = PanelController(
@@ -53,6 +178,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         DispatchQueue.main.async { [weak self] in
             self?.panelController.show()
+            if let startupWarningMessage = self?.startupWarningMessage {
+                self?.showStartupAlert(
+                    title: "旧数据清理未完成",
+                    message: startupWarningMessage,
+                    style: .warning
+                )
+            }
         }
     }
 
@@ -61,7 +193,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidResignActive(_ notification: Notification) {
-        guard panelController.isVisible else { return }
+        guard startupFailureMessage == nil, panelController.isVisible else { return }
         panelController.hide(restoringPreviousApplication: false)
     }
 
@@ -69,6 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ sender: NSApplication,
         hasVisibleWindows flag: Bool
     ) -> Bool {
+        guard startupFailureMessage == nil else { return false }
         panelController.show()
         return true
     }
@@ -410,6 +543,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSApp.appearance = mode.appearance
             }
             .store(in: &cancellables)
+    }
+
+    private func showStartupAlert(
+        title: String,
+        message: String,
+        style: NSAlert.Style
+    ) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = style
+        alert.messageText = title
+        alert.informativeText = message
+        alert.addButton(withTitle: "知道了")
+        alert.runModal()
+    }
+
+    private static var applicationVersion: String {
+        let shortVersion = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String ?? "unknown"
+        let buildVersion = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleVersion"
+        ) as? String ?? "unknown"
+        return "\(shortVersion) (\(buildVersion))"
+    }
+
+    private static func runningLegacyVaultApplication() -> NSRunningApplication? {
+        let currentProcessIdentifier = ProcessInfo.processInfo.processIdentifier
+        return NSRunningApplication.runningApplications(
+            withBundleIdentifier: VaultStorage.legacyBundleIdentifier
+        )
+            .first { $0.processIdentifier != currentProcessIdentifier }
+    }
+
+    private static func runningBenriWithoutVaultLock() -> NSRunningApplication? {
+        let currentProcessIdentifier = ProcessInfo.processInfo.processIdentifier
+        return NSRunningApplication.runningApplications(
+            withBundleIdentifier: "com.crimsonteps.benri"
+        )
+            .filter { $0.processIdentifier != currentProcessIdentifier }
+            .first { application in
+                guard let bundleURL = application.bundleURL else { return true }
+                let installedPaths = [
+                    "/Applications/Benri.app",
+                    FileManager.default.homeDirectoryForCurrentUser
+                        .appendingPathComponent("Applications/Benri.app")
+                        .path
+                ]
+                if installedPaths.contains(bundleURL.standardizedFileURL.path) {
+                    return true
+                }
+
+                guard
+                      let bundle = Bundle(url: bundleURL),
+                      let lockVersion = bundle.object(
+                        forInfoDictionaryKey: "BenriVaultLockVersion"
+                      ) as? NSNumber
+                else { return true }
+                return lockVersion.intValue < 1
+            }
+    }
+
+    private static func canonicalFileURL(_ url: URL) -> URL {
+        url.standardizedFileURL.resolvingSymlinksInPath()
     }
 
 }

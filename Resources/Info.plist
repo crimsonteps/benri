@@ -22,6 +22,8 @@
     <string>1.1.0</string>
     <key>CFBundleVersion</key>
     <string>2</string>
+    <key>BenriVaultLockVersion</key>
+    <integer>1</integer>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.utilities</string>
     <key>LSMinimumSystemVersion</key>

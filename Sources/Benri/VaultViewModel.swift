@@ -60,13 +60,16 @@ enum VaultBootstrapError: Error, LocalizedError {
 enum VaultOperationError: Error, LocalizedError {
     case unsavedChanges
     case restoreFailed
+    case activeKeyUnavailable
 
     var errorDescription: String? {
         switch self {
         case .unsavedChanges:
             return "当前修改尚未成功保存，请先解决保存错误。"
         case .restoreFailed:
-            return "备份已写入，但 Benri 无法重新打开恢复后的保险库。"
+            return "Benri 无法确认恢复后的保险库状态。为避免覆盖磁盘数据，当前窗口已停止写入。"
+        case .activeKeyUnavailable:
+            return "无法确认当前保险库的持久化密钥。为避免生成下次启动无法解密的数据，恢复已停止。"
         }
     }
 }
@@ -98,7 +101,8 @@ final class VaultViewModel: ObservableObject {
 
     init(
         vaultFileURL: URL? = nil,
-        keyStore: VaultKeyStore? = nil
+        keyStore: VaultKeyStore? = nil,
+        startupFailureMessage: String? = nil
     ) {
         let resolvedVaultFileURL = vaultFileURL
             ?? VaultStorage.defaultVaultFileURL()
@@ -109,7 +113,11 @@ final class VaultViewModel: ObservableObject {
                 .appendingPathComponent("vault.key")
         )
 
-        bootstrap()
+        if let startupFailureMessage {
+            fatalErrorMessage = startupFailureMessage
+        } else {
+            bootstrap()
+        }
     }
 
     var sortedCategories: [VaultCategory] {
@@ -132,6 +140,12 @@ final class VaultViewModel: ObservableObject {
 
     var canModifyVault: Bool {
         fatalErrorMessage == nil && fileStore != nil
+    }
+
+    var canCreateRecoveryBackup: Bool {
+        fatalErrorMessage == nil
+            && FileManager.default.fileExists(atPath: vaultFileURL.path)
+            && FileManager.default.fileExists(atPath: keyStore.fileURL.path)
     }
 
     var preferredCategoryID: UUID {
@@ -462,34 +476,45 @@ final class VaultViewModel: ObservableObject {
     }
 
     func restoreBackup(
-        from backupURL: URL,
+        _ validatedBackup: ValidatedVaultBackup,
         appVersion: String
     ) throws -> VaultRestoreResult {
         flushPendingRecordSave()
         guard !hasUnsavedChanges else { throw VaultOperationError.unsavedChanges }
 
         let recoveryBackupURL = try createRecoveryBackupIfPossible(appVersion: appVersion)
+        let restoreStore = try fileStoreForRestore()
         closeRecordPanel()
         dismissEditors()
 
-        let restoredBackup = try VaultBackupArchive.restore(
-            from: backupURL,
-            toVaultFileURL: vaultFileURL,
-            keyFileURL: keyStore.fileURL
-        )
+        let payloadBeforeRestore = payload
+        let restoredPayload: VaultPayload
+        do {
+            restoredPayload = try VaultBackupArchive.restore(
+                validatedBackup,
+                to: restoreStore
+            )
+        } catch {
+            if (try? restoreStore.load()) != payloadBeforeRestore {
+                fileStore = nil
+                hasUnsavedChanges = false
+                fatalErrorMessage = VaultOperationError.restoreFailed.localizedDescription
+            }
+            throw error
+        }
         selectedCategoryID = nil
         selectedRecordID = nil
         searchText = ""
         keyboardPane = .records
         recordPanelMode = .closed
-        bootstrap()
-
-        guard fatalErrorMessage == nil else {
-            throw VaultOperationError.restoreFailed
-        }
+        payload = restoredPayload
+        fileStore = restoreStore
+        fatalErrorMessage = nil
+        hasUnsavedChanges = false
+        ensureSelection()
 
         return VaultRestoreResult(
-            backup: restoredBackup,
+            backup: validatedBackup,
             recoveryBackupURL: recoveryBackupURL
         )
     }
@@ -567,10 +592,7 @@ final class VaultViewModel: ObservableObject {
     }
 
     private func createRecoveryBackupIfPossible(appVersion: String) throws -> URL? {
-        guard fatalErrorMessage == nil,
-              FileManager.default.fileExists(atPath: vaultFileURL.path),
-              FileManager.default.fileExists(atPath: keyStore.fileURL.path)
-        else { return nil }
+        guard canCreateRecoveryBackup else { return nil }
 
         let backupsDirectory = vaultFileURL
             .deletingLastPathComponent()
@@ -599,6 +621,29 @@ final class VaultViewModel: ObservableObject {
             appVersion: appVersion
         )
         return backupURL
+    }
+
+    private func fileStoreForRestore() throws -> VaultFileStore {
+        if fileStore != nil {
+            guard let persistedKey = try keyStore.loadKey() else {
+                throw VaultOperationError.activeKeyUnavailable
+            }
+            let persistedStore = VaultFileStore(
+                fileURL: vaultFileURL,
+                keyData: persistedKey
+            )
+            do {
+                guard try persistedStore.load() == payload else {
+                    throw VaultOperationError.activeKeyUnavailable
+                }
+            } catch {
+                throw VaultOperationError.activeKeyUnavailable
+            }
+            return persistedStore
+        }
+
+        let keyData = try keyStore.loadOrCreateKeyForRestore()
+        return VaultFileStore(fileURL: vaultFileURL, keyData: keyData)
     }
 
     private func persistChanges() {

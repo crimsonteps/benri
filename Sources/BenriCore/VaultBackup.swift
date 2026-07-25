@@ -221,57 +221,25 @@ public enum VaultBackupArchive {
 
     @discardableResult
     public static func restore(
-        from backupURL: URL,
-        toVaultFileURL vaultFileURL: URL,
-        keyFileURL: URL,
-        fileManager: FileManager = .default
-    ) throws -> ValidatedVaultBackup {
-        let validatedBackup = try validate(at: backupURL, fileManager: fileManager)
-        let backupVaultURL = backupURL.appendingPathComponent(vaultFileName)
-        let backupKeyURL = backupURL.appendingPathComponent(keyFileName)
-        let vaultData = try Data(contentsOf: backupVaultURL)
-        let keyData = try Data(contentsOf: backupKeyURL)
-
-        let previousVaultData = try existingData(at: vaultFileURL, fileManager: fileManager)
-        let previousKeyData = try existingData(at: keyFileURL, fileManager: fileManager)
-
+        _ validatedBackup: ValidatedVaultBackup,
+        to destinationStore: VaultFileStore
+    ) throws -> VaultPayload {
+        var payload = validatedBackup.payload
+        payload.migrateToCurrentFormat()
         do {
-            try writePrivate(keyData, to: keyFileURL, fileManager: fileManager)
-            try writePrivate(vaultData, to: vaultFileURL, fileManager: fileManager)
-
-            let restoredKey = try Data(contentsOf: keyFileURL)
-            let restoredVault = try Data(contentsOf: vaultFileURL)
-            let restoredPayload = try VaultCrypto.decrypt(restoredVault, keyData: restoredKey)
-            guard restoredPayload == validatedBackup.payload else {
+            try destinationStore.save(payload)
+            guard try destinationStore.load() == payload else {
                 throw VaultBackupError.restoreFailed
             }
         } catch {
-            try? restore(previousKeyData, at: keyFileURL, fileManager: fileManager)
-            try? restore(previousVaultData, at: vaultFileURL, fileManager: fileManager)
+            if let restoredPayload = try? destinationStore.load(),
+               restoredPayload == payload {
+                return payload
+            }
             throw VaultBackupError.restoreFailed
         }
 
-        return validatedBackup
-    }
-
-    private static func existingData(
-        at fileURL: URL,
-        fileManager: FileManager
-    ) throws -> Data? {
-        guard fileManager.fileExists(atPath: fileURL.path) else { return nil }
-        return try Data(contentsOf: fileURL)
-    }
-
-    private static func restore(
-        _ data: Data?,
-        at fileURL: URL,
-        fileManager: FileManager
-    ) throws {
-        if let data {
-            try writePrivate(data, to: fileURL, fileManager: fileManager)
-        } else if fileManager.fileExists(atPath: fileURL.path) {
-            try fileManager.removeItem(at: fileURL)
-        }
+        return payload
     }
 
     private static func createPrivateDirectory(

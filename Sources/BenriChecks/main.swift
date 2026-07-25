@@ -3,6 +3,30 @@ import Darwin
 import Foundation
 import BenriCore
 
+private func runVaultLockHolderIfRequested() {
+    let arguments = CommandLine.arguments
+    guard arguments.count == 4, arguments[1] == "--hold-vault-lock" else { return }
+
+    do {
+        let lock = try VaultFileLock.acquire(
+            forVaultAt: URL(fileURLWithPath: arguments[2]),
+            lockDirectoryURL: URL(fileURLWithPath: arguments[3])
+        )
+        print("READY")
+        fflush(stdout)
+        withExtendedLifetime(lock) {
+            while true {
+                _ = Darwin.pause()
+            }
+        }
+    } catch {
+        fputs("LOCK_ERROR: \(error.localizedDescription)\n", stderr)
+        exit(2)
+    }
+}
+
+runVaultLockHolderIfRequested()
+
 private struct CheckRunner {
     private(set) var failures = 0
     private(set) var checks = 0
@@ -42,6 +66,19 @@ private func encryptRawVaultJSON(_ json: Data, keyData: Data) throws -> Data {
     output.append(1)
     output.append(combined)
     return output
+}
+
+private func writePrivateTestData(_ data: Data, to fileURL: URL) throws {
+    try FileManager.default.createDirectory(
+        at: fileURL.deletingLastPathComponent(),
+        withIntermediateDirectories: true,
+        attributes: [.posixPermissions: 0o700]
+    )
+    try data.write(to: fileURL, options: [.atomic])
+    try FileManager.default.setAttributes(
+        [.posixPermissions: 0o600],
+        ofItemAtPath: fileURL.path
+    )
 }
 
 private func checkModelRoundTrip() throws {
@@ -316,6 +353,608 @@ private func checkLocalKeyStore() throws {
 
     try keyStore.deleteKey()
     runner.expect(!FileManager.default.fileExists(atPath: keyURL.path), "重置会删除本地密钥")
+
+    let recoveryService = "com.crimsonteps.benri.checks.recovery.\(UUID().uuidString)"
+    let recoveryKeychain = KeychainKeyStore(service: recoveryService)
+    defer { try? recoveryKeychain.deleteKey() }
+    let keychainRecoveryKey = try recoveryKeychain.loadOrCreateKey()
+    try writePrivateTestData(Data(repeating: 0, count: 31), to: keyURL)
+    let recoveryKeyStore = VaultKeyStore(
+        fileURL: keyURL,
+        legacyKeychain: recoveryKeychain
+    )
+    let recoveredKey = try recoveryKeyStore.loadOrCreateKeyForRestore()
+    let recoveredKeyFileData = try Data(contentsOf: keyURL)
+    runner.expect(
+        recoveredKey == keychainRecoveryKey
+            && recoveredKeyFileData == keychainRecoveryKey,
+        "恢复时本地密钥损坏会优先复用钥匙串密钥"
+    )
+
+    let replacementService = "com.crimsonteps.benri.checks.replacement.\(UUID().uuidString)"
+    let replacementKeyStore = VaultKeyStore(
+        fileURL: keyURL,
+        legacyKeychain: KeychainKeyStore(service: replacementService)
+    )
+    try writePrivateTestData(Data(repeating: 0, count: 31), to: keyURL)
+    let replacementKey = try replacementKeyStore.loadOrCreateKeyForRestore()
+    let replacementKeyFileData = try Data(contentsOf: keyURL)
+    runner.expect(
+        replacementKey.count == 32
+            && replacementKeyFileData == replacementKey,
+        "恢复时本地和钥匙串均无有效密钥才生成替代密钥"
+    )
+}
+
+private func checkLegacyPreferencesMigration() {
+    let legacyDomain = "com.crimsonteps.quickvault.checks.\(UUID().uuidString)"
+    let destinationDomain = "com.crimsonteps.benri.checks.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: destinationDomain) else {
+        runner.expect(false, "可创建隔离的偏好设置测试域")
+        return
+    }
+    defer {
+        defaults.removePersistentDomain(forName: legacyDomain)
+        defaults.removePersistentDomain(forName: destinationDomain)
+    }
+
+    defaults.removePersistentDomain(forName: destinationDomain)
+    defaults.setPersistentDomain(
+        [
+            "appearanceMode": "dark",
+            "globalHotKey": "optionSpace",
+            "showsMenuBarIcon": false
+        ],
+        forName: legacyDomain
+    )
+    defaults.set("controlSpace", forKey: "globalHotKey")
+
+    let changed = LegacyPreferencesMigrator.migrateIfNeeded(
+        legacyDomainName: legacyDomain,
+        destinationDefaults: defaults
+    )
+    runner.expect(
+        changed
+            && defaults.string(forKey: "appearanceMode") == "dark"
+            && defaults.string(forKey: "globalHotKey") == "controlSpace"
+            && defaults.object(forKey: "showsMenuBarIcon") as? Bool == false,
+        "旧偏好只复制受支持的值且不覆盖新设置"
+    )
+
+    defaults.setPersistentDomain(
+        [
+            "appearanceMode": "light",
+            "globalHotKey": "commandOptionSpace",
+            "showsMenuBarIcon": true
+        ],
+        forName: legacyDomain
+    )
+    runner.expect(
+        !LegacyPreferencesMigrator.migrateIfNeeded(
+            legacyDomainName: legacyDomain,
+            destinationDefaults: defaults
+        )
+            && defaults.string(forKey: "appearanceMode") == "dark"
+            && defaults.string(forKey: "globalHotKey") == "controlSpace"
+            && defaults.object(forKey: "showsMenuBarIcon") as? Bool == false,
+        "旧偏好迁移只执行一次"
+    )
+
+    let invalidDestinationDomain = "com.crimsonteps.benri.checks.\(UUID().uuidString)"
+    guard let invalidDefaults = UserDefaults(suiteName: invalidDestinationDomain) else {
+        runner.expect(false, "可创建非法偏好测试域")
+        return
+    }
+    defer { invalidDefaults.removePersistentDomain(forName: invalidDestinationDomain) }
+    invalidDefaults.removePersistentDomain(forName: invalidDestinationDomain)
+    invalidDefaults.setPersistentDomain(
+        [
+            "appearanceMode": "sepia",
+            "globalHotKey": "commandShiftSpace",
+            "showsMenuBarIcon": "yes"
+        ],
+        forName: legacyDomain
+    )
+    _ = LegacyPreferencesMigrator.migrateIfNeeded(
+        legacyDomainName: legacyDomain,
+        destinationDefaults: invalidDefaults
+    )
+    runner.expect(
+        invalidDefaults.object(forKey: "appearanceMode") == nil
+            && invalidDefaults.object(forKey: "globalHotKey") == nil
+            && invalidDefaults.object(forKey: "showsMenuBarIcon") == nil,
+        "旧偏好迁移忽略不受支持的值"
+    )
+}
+
+private func checkVaultFileLock() throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("BenriLockChecks-\(UUID().uuidString)", isDirectory: true)
+    let lockDirectory = rootDirectory.appendingPathComponent("Locks", isDirectory: true)
+    let firstVaultURL = rootDirectory
+        .appendingPathComponent("VaultA", isDirectory: true)
+        .appendingPathComponent("vault.qv")
+    let sameDirectoryVaultURL = firstVaultURL
+        .deletingLastPathComponent()
+        .appendingPathComponent("another.qv")
+    let secondVaultURL = rootDirectory
+        .appendingPathComponent("VaultB", isDirectory: true)
+        .appendingPathComponent("vault.qv")
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let firstLock = try VaultFileLock.acquire(
+        forVaultAt: firstVaultURL,
+        lockDirectoryURL: lockDirectory
+    )
+    runner.expect(
+        FileManager.default.fileExists(atPath: firstLock.lockFileURL.path),
+        "首次打开保险库可获取进程锁"
+    )
+
+    do {
+        _ = try VaultFileLock.acquire(
+            forVaultAt: firstVaultURL,
+            lockDirectoryURL: lockDirectory
+        )
+        runner.expect(false, "同一保险库的第二个进程锁会被拒绝")
+    } catch VaultFileLockError.alreadyInUse {
+        runner.expect(true, "同一保险库的第二个进程锁会被拒绝")
+    } catch {
+        runner.expect(false, "同一保险库的第二个进程锁会被拒绝")
+    }
+
+    do {
+        _ = try VaultFileLock.acquire(
+            forVaultAt: sameDirectoryVaultURL,
+            lockDirectoryURL: lockDirectory
+        )
+        runner.expect(false, "共享密钥目录的不同保险库文件也会冲突")
+    } catch VaultFileLockError.alreadyInUse {
+        runner.expect(true, "共享密钥目录的不同保险库文件也会冲突")
+    } catch {
+        runner.expect(false, "共享密钥目录的不同保险库文件也会冲突")
+    }
+
+    let independentLock = try VaultFileLock.acquire(
+        forVaultAt: secondVaultURL,
+        lockDirectoryURL: lockDirectory
+    )
+    runner.expect(
+        independentLock.lockFileURL != firstLock.lockFileURL,
+        "不同数据目录可以同时运行"
+    )
+
+    let lockAttributes = try FileManager.default.attributesOfItem(
+        atPath: firstLock.lockFileURL.path
+    )
+    let lockDirectoryAttributes = try FileManager.default.attributesOfItem(
+        atPath: lockDirectory.path
+    )
+    runner.expect(
+        (lockAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o600,
+        "保险库锁文件权限为 0600"
+    )
+    runner.expect(
+        (lockDirectoryAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o700,
+        "保险库锁目录权限为 0700"
+    )
+
+    firstLock.release()
+    firstLock.release()
+    let reacquiredLock = try VaultFileLock.acquire(
+        forVaultAt: firstVaultURL,
+        lockDirectoryURL: lockDirectory
+    )
+    runner.expect(
+        reacquiredLock.lockFileURL == firstLock.lockFileURL,
+        "首个实例退出后可以立即重新获取保险库锁"
+    )
+
+    let realDirectory = rootDirectory.appendingPathComponent("RealVault", isDirectory: true)
+    let aliasDirectory = rootDirectory.appendingPathComponent("AliasVault", isDirectory: true)
+    try FileManager.default.createDirectory(
+        at: realDirectory,
+        withIntermediateDirectories: true
+    )
+    try FileManager.default.createSymbolicLink(
+        at: aliasDirectory,
+        withDestinationURL: realDirectory
+    )
+    let realPathLock = try VaultFileLock.acquire(
+        forVaultAt: realDirectory.appendingPathComponent("vault.qv"),
+        lockDirectoryURL: lockDirectory
+    )
+    do {
+        _ = try VaultFileLock.acquire(
+            forVaultAt: aliasDirectory.appendingPathComponent("vault.qv"),
+            lockDirectoryURL: lockDirectory
+        )
+        runner.expect(false, "符号链接别名会映射到同一保险库锁")
+    } catch VaultFileLockError.alreadyInUse {
+        runner.expect(true, "符号链接别名会映射到同一保险库锁")
+    } catch {
+        runner.expect(false, "符号链接别名会映射到同一保险库锁")
+    }
+
+    let upperCaseVaultURL = rootDirectory
+        .appendingPathComponent("CaseVault", isDirectory: true)
+        .appendingPathComponent("vault.qv")
+    let lowerCaseVaultURL = rootDirectory
+        .appendingPathComponent("casevault", isDirectory: true)
+        .appendingPathComponent("vault.qv")
+    let caseLock = try VaultFileLock.acquire(
+        forVaultAt: upperCaseVaultURL,
+        lockDirectoryURL: lockDirectory
+    )
+    do {
+        _ = try VaultFileLock.acquire(
+            forVaultAt: lowerCaseVaultURL,
+            lockDirectoryURL: lockDirectory
+        )
+        runner.expect(false, "不存在目录的大小写别名也不会绕过保险库锁")
+    } catch VaultFileLockError.alreadyInUse {
+        runner.expect(true, "不存在目录的大小写别名也不会绕过保险库锁")
+    } catch {
+        runner.expect(false, "不存在目录的大小写别名也不会绕过保险库锁")
+    }
+
+    let childVaultURL = rootDirectory
+        .appendingPathComponent("ChildVault", isDirectory: true)
+        .appendingPathComponent("vault.qv")
+    let childProcess = Process()
+    let executableURL = URL(
+        fileURLWithPath: CommandLine.arguments[0],
+        relativeTo: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    ).standardizedFileURL
+    childProcess.executableURL = executableURL
+    childProcess.arguments = [
+        "--hold-vault-lock",
+        childVaultURL.path,
+        lockDirectory.path
+    ]
+    let childOutput = Pipe()
+    childProcess.standardOutput = childOutput
+    try childProcess.run()
+    defer {
+        if childProcess.isRunning {
+            _ = Darwin.kill(childProcess.processIdentifier, SIGKILL)
+            childProcess.waitUntilExit()
+        }
+    }
+    let readyData = try childOutput.fileHandleForReading.read(upToCount: 6) ?? Data()
+    runner.expect(
+        String(decoding: readyData, as: UTF8.self).contains("READY"),
+        "子进程可持有保险库锁"
+    )
+    do {
+        _ = try VaultFileLock.acquire(
+            forVaultAt: childVaultURL,
+            lockDirectoryURL: lockDirectory
+        )
+        runner.expect(false, "跨进程的第二个保险库锁会被拒绝")
+    } catch VaultFileLockError.alreadyInUse {
+        runner.expect(true, "跨进程的第二个保险库锁会被拒绝")
+    } catch {
+        runner.expect(false, "跨进程的第二个保险库锁会被拒绝")
+    }
+    _ = Darwin.kill(childProcess.processIdentifier, SIGKILL)
+    childProcess.waitUntilExit()
+    let lockAfterForcedExit = try VaultFileLock.acquire(
+        forVaultAt: childVaultURL,
+        lockDirectoryURL: lockDirectory
+    )
+    runner.expect(
+        !childProcess.isRunning,
+        "子进程被强制结束后保险库锁由内核自动释放"
+    )
+
+    reacquiredLock.release()
+    independentLock.release()
+    realPathLock.release()
+    caseLock.release()
+    lockAfterForcedExit.release()
+}
+
+private func checkLegacyInstallationMigration() throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("BenriMigrationChecks-\(UUID().uuidString)", isDirectory: true)
+    let legacyDirectory = rootDirectory.appendingPathComponent("QuickVault", isDirectory: true)
+    let destinationDirectory = rootDirectory.appendingPathComponent("Benri", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let key = VaultCrypto.generateKeyData()
+    let legacyCategory = VaultCategory(
+        id: VaultDefaults.personalCategoryID,
+        name: "私人",
+        iconName: nil,
+        sortOrder: 0,
+        isBuiltIn: true
+    )
+    let legacyPayload = VaultPayload(
+        formatVersion: VaultPayload.currentFormatVersion - 1,
+        categories: [legacyCategory],
+        records: [
+            VaultRecord(
+                name: "旧版记录",
+                categoryID: legacyCategory.id,
+                content: "legacy-secret",
+                createdAt: fixedDate,
+                updatedAt: fixedDate
+            )
+        ]
+    )
+    let legacyVaultURL = legacyDirectory.appendingPathComponent("vault.qv")
+    let legacyKeyURL = legacyDirectory.appendingPathComponent("vault.key")
+    try VaultFileStore(fileURL: legacyVaultURL, keyData: key).save(legacyPayload)
+    try writePrivateTestData(key, to: legacyKeyURL)
+
+    let outcome = try LegacyInstallationMigrator.migrateIfNeeded(
+        legacyDirectoryURL: legacyDirectory,
+        destinationDirectoryURL: destinationDirectory,
+        appVersion: "1.1.0 (2)",
+        legacyKeychainKey: { nil },
+        now: fixedDate
+    )
+    guard case let .migrated(backupURL) = outcome else {
+        runner.expect(false, "旧 QuickVault 保险库可一次性迁移到 Benri")
+        return
+    }
+
+    let migratedKeyURL = destinationDirectory.appendingPathComponent("vault.key")
+    let migratedVaultURL = destinationDirectory.appendingPathComponent("vault.qv")
+    let migratedKey = try Data(contentsOf: migratedKeyURL)
+    let migratedPayload = try VaultFileStore(
+        fileURL: migratedVaultURL,
+        keyData: migratedKey
+    ).load()
+    var expectedPayload = legacyPayload
+    _ = expectedPayload.migrateToCurrentFormat()
+    runner.expect(
+        migratedKey == key
+            && migratedPayload == expectedPayload
+            && !FileManager.default.fileExists(atPath: legacyDirectory.path),
+        "旧 QuickVault 保险库可一次性迁移到 Benri"
+    )
+
+    let migrationBackup = try VaultBackupArchive.validate(at: backupURL)
+    runner.expect(
+        migrationBackup.payload == legacyPayload,
+        "迁移前备份可完整校验并保留原始格式"
+    )
+
+    let destinationAttributes = try FileManager.default.attributesOfItem(
+        atPath: destinationDirectory.path
+    )
+    let migratedVaultAttributes = try FileManager.default.attributesOfItem(
+        atPath: migratedVaultURL.path
+    )
+    let migratedKeyAttributes = try FileManager.default.attributesOfItem(
+        atPath: migratedKeyURL.path
+    )
+    runner.expect(
+        (destinationAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o700
+            && (migratedVaultAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o600
+            && (migratedKeyAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o600,
+        "迁移后的数据目录和文件权限正确"
+    )
+
+    let secondOutcome = try LegacyInstallationMigrator.migrateIfNeeded(
+        legacyDirectoryURL: legacyDirectory,
+        destinationDirectoryURL: destinationDirectory,
+        appVersion: "1.1.0 (2)",
+        legacyKeychainKey: { nil }
+    )
+    runner.expect(
+        secondOutcome == .currentVaultAlreadyExists,
+        "已有 Benri 保险库时不会重复迁移"
+    )
+
+    let keychainRoot = rootDirectory.appendingPathComponent("KeychainFallback", isDirectory: true)
+    let keychainLegacy = keychainRoot.appendingPathComponent("QuickVault", isDirectory: true)
+    let keychainDestination = keychainRoot.appendingPathComponent("Benri", isDirectory: true)
+    let keychainVaultURL = keychainLegacy.appendingPathComponent("vault.qv")
+    try VaultFileStore(fileURL: keychainVaultURL, keyData: key).save(legacyPayload)
+    let keychainOutcome = try LegacyInstallationMigrator.migrateIfNeeded(
+        legacyDirectoryURL: keychainLegacy,
+        destinationDirectoryURL: keychainDestination,
+        appVersion: "1.1.0 (2)",
+        legacyKeychainKey: { key },
+        now: fixedDate
+    )
+    runner.expect(
+        {
+            if case .migrated = keychainOutcome { return true }
+            return false
+        }(),
+        "旧密钥文件缺失时可从旧钥匙串迁移"
+    )
+
+    let failureRoot = rootDirectory.appendingPathComponent("WrongKey", isDirectory: true)
+    let failureLegacy = failureRoot.appendingPathComponent("QuickVault", isDirectory: true)
+    let failureDestination = failureRoot.appendingPathComponent("Benri", isDirectory: true)
+    let failureVaultURL = failureLegacy.appendingPathComponent("vault.qv")
+    let failureKeyURL = failureLegacy.appendingPathComponent("vault.key")
+    try VaultFileStore(fileURL: failureVaultURL, keyData: key).save(legacyPayload)
+    try writePrivateTestData(VaultCrypto.generateKeyData(), to: failureKeyURL)
+    let originalFailureVault = try Data(contentsOf: failureVaultURL)
+    let originalFailureKey = try Data(contentsOf: failureKeyURL)
+    runner.expectThrows("旧保险库密钥不匹配时拒绝迁移") {
+        _ = try LegacyInstallationMigrator.migrateIfNeeded(
+            legacyDirectoryURL: failureLegacy,
+            destinationDirectoryURL: failureDestination,
+            appVersion: "1.1.0 (2)",
+            legacyKeychainKey: { nil }
+        )
+    }
+    let failureVaultAfterMigration = try Data(contentsOf: failureVaultURL)
+    let failureKeyAfterMigration = try Data(contentsOf: failureKeyURL)
+    runner.expect(
+        !FileManager.default.fileExists(atPath: failureDestination.path)
+            && failureVaultAfterMigration == originalFailureVault
+            && failureKeyAfterMigration == originalFailureKey,
+        "迁移失败不会创建新目录或改动旧数据"
+    )
+
+    let futureRoot = rootDirectory.appendingPathComponent("FutureFormat", isDirectory: true)
+    let futureLegacy = futureRoot.appendingPathComponent("QuickVault", isDirectory: true)
+    let futureDestination = futureRoot.appendingPathComponent("Benri", isDirectory: true)
+    let futureVaultURL = futureLegacy.appendingPathComponent("vault.qv")
+    let futureKeyURL = futureLegacy.appendingPathComponent("vault.key")
+    let futureJSON = """
+    {
+      "formatVersion": \(VaultPayload.currentFormatVersion + 1),
+      "categories": [],
+      "records": []
+    }
+    """
+    try writePrivateTestData(
+        try encryptRawVaultJSON(Data(futureJSON.utf8), keyData: key),
+        to: futureVaultURL
+    )
+    try writePrivateTestData(key, to: futureKeyURL)
+    runner.expectThrows("未来格式的旧保险库不会被降级迁移") {
+        _ = try LegacyInstallationMigrator.migrateIfNeeded(
+            legacyDirectoryURL: futureLegacy,
+            destinationDirectoryURL: futureDestination,
+            appVersion: "1.1.0 (2)",
+            legacyKeychainKey: { nil }
+        )
+    }
+    runner.expect(
+        !FileManager.default.fileExists(atPath: futureDestination.path)
+            && FileManager.default.fileExists(atPath: futureLegacy.path),
+        "未来格式迁移失败时保留旧目录"
+    )
+
+    let noLegacyRoot = rootDirectory.appendingPathComponent("NoLegacy", isDirectory: true)
+    let noLegacyDirectory = noLegacyRoot.appendingPathComponent("QuickVault", isDirectory: true)
+    let noLegacyDestination = noLegacyRoot.appendingPathComponent("Benri", isDirectory: true)
+    let noLegacyOutcome = try LegacyInstallationMigrator.migrateIfNeeded(
+        legacyDirectoryURL: noLegacyDirectory,
+        destinationDirectoryURL: noLegacyDestination,
+        appVersion: "1.1.0 (2)",
+        legacyKeychainKey: { nil }
+    )
+    runner.expect(
+        noLegacyOutcome == .noLegacyVault
+            && !FileManager.default.fileExists(atPath: noLegacyDestination.path),
+        "没有旧保险库时不会创建迁移产物"
+    )
+
+    let activeRoot = rootDirectory.appendingPathComponent("LegacyActive", isDirectory: true)
+    let activeLegacy = activeRoot.appendingPathComponent("QuickVault", isDirectory: true)
+    let activeDestination = activeRoot.appendingPathComponent("Benri", isDirectory: true)
+    try VaultFileStore(
+        fileURL: activeLegacy.appendingPathComponent("vault.qv"),
+        keyData: key
+    ).save(legacyPayload)
+    try writePrivateTestData(key, to: activeLegacy.appendingPathComponent("vault.key"))
+    runner.expectThrows("旧版仍在运行时迁移会在提交前停止") {
+        _ = try LegacyInstallationMigrator.migrateIfNeeded(
+            legacyDirectoryURL: activeLegacy,
+            destinationDirectoryURL: activeDestination,
+            appVersion: "1.1.0 (2)",
+            legacyKeychainKey: { nil },
+            legacySourceIsInactive: { false }
+        )
+    }
+    runner.expect(
+        FileManager.default.fileExists(atPath: activeLegacy.path)
+            && !FileManager.default.fileExists(atPath: activeDestination.path),
+        "旧版活跃导致迁移失败时旧目录保持不变"
+    )
+
+    let changedRoot = rootDirectory.appendingPathComponent("LegacyChanged", isDirectory: true)
+    let changedLegacy = changedRoot.appendingPathComponent("QuickVault", isDirectory: true)
+    let changedDestination = changedRoot.appendingPathComponent("Benri", isDirectory: true)
+    let changedVaultURL = changedLegacy.appendingPathComponent("vault.qv")
+    try VaultFileStore(fileURL: changedVaultURL, keyData: key).save(legacyPayload)
+    try writePrivateTestData(key, to: changedLegacy.appendingPathComponent("vault.key"))
+    var inactivityCheckCount = 0
+    runner.expectThrows("旧数据在最终提交前发生变化时取消迁移") {
+        _ = try LegacyInstallationMigrator.migrateIfNeeded(
+            legacyDirectoryURL: changedLegacy,
+            destinationDirectoryURL: changedDestination,
+            appVersion: "1.1.0 (2)",
+            legacyKeychainKey: { nil },
+            legacySourceIsInactive: {
+                inactivityCheckCount += 1
+                if inactivityCheckCount == 3 {
+                    var changedPayload = legacyPayload
+                    changedPayload.records.append(
+                        VaultRecord(
+                            name: "迁移期间新增",
+                            categoryID: legacyCategory.id
+                        )
+                    )
+                    try! VaultFileStore(
+                        fileURL: changedVaultURL,
+                        keyData: key
+                    ).save(changedPayload)
+                }
+                return true
+            }
+        )
+    }
+    let changedPayloadOnDisk = try VaultFileStore(
+        fileURL: changedVaultURL,
+        keyData: key
+    ).load()
+    runner.expect(
+        changedPayloadOnDisk.records.count == legacyPayload.records.count + 1
+            && !FileManager.default.fileExists(atPath: changedDestination.path),
+        "迁移期间的新数据会保留且目标目录会回滚"
+    )
+
+    let extraFileRoot = rootDirectory.appendingPathComponent("ExtraLegacyFile", isDirectory: true)
+    let extraFileLegacy = extraFileRoot.appendingPathComponent("QuickVault", isDirectory: true)
+    let extraFileDestination = extraFileRoot.appendingPathComponent("Benri", isDirectory: true)
+    try VaultFileStore(
+        fileURL: extraFileLegacy.appendingPathComponent("vault.qv"),
+        keyData: key
+    ).save(legacyPayload)
+    try writePrivateTestData(key, to: extraFileLegacy.appendingPathComponent("vault.key"))
+    try writePrivateTestData(
+        Data("keep-me".utf8),
+        to: extraFileLegacy.appendingPathComponent("notes.txt")
+    )
+    runner.expectThrows("旧目录包含额外文件时不会永久删除") {
+        _ = try LegacyInstallationMigrator.migrateIfNeeded(
+            legacyDirectoryURL: extraFileLegacy,
+            destinationDirectoryURL: extraFileDestination,
+            appVersion: "1.1.0 (2)",
+            legacyKeychainKey: { nil }
+        )
+    }
+    runner.expect(
+        FileManager.default.fileExists(atPath: extraFileLegacy.path)
+            && FileManager.default.fileExists(
+                atPath: extraFileLegacy.appendingPathComponent("notes.txt").path
+            )
+            && FileManager.default.fileExists(atPath: extraFileDestination.path),
+        "额外旧文件会被保留且已验证的新保险库仍可使用"
+    )
+
+    let occupiedRoot = rootDirectory.appendingPathComponent("Occupied", isDirectory: true)
+    let occupiedLegacy = occupiedRoot.appendingPathComponent("QuickVault", isDirectory: true)
+    let occupiedDestination = occupiedRoot.appendingPathComponent("Benri", isDirectory: true)
+    try VaultFileStore(
+        fileURL: occupiedLegacy.appendingPathComponent("vault.qv"),
+        keyData: key
+    ).save(legacyPayload)
+    try writePrivateTestData(key, to: occupiedLegacy.appendingPathComponent("vault.key"))
+    try FileManager.default.createDirectory(
+        at: occupiedDestination,
+        withIntermediateDirectories: true
+    )
+    runner.expectThrows("目标目录已被占用时不会覆盖") {
+        _ = try LegacyInstallationMigrator.migrateIfNeeded(
+            legacyDirectoryURL: occupiedLegacy,
+            destinationDirectoryURL: occupiedDestination,
+            appVersion: "1.1.0 (2)",
+            legacyKeychainKey: { nil }
+        )
+    }
 }
 
 private func checkBackupArchive() throws {
@@ -402,18 +1041,18 @@ private func checkBackupArchive() throws {
             )
         ])
     )
-    try oldKey.write(to: restoredKeyURL, options: [.atomic])
+    try writePrivateTestData(oldKey, to: restoredKeyURL)
 
+    let destinationStore = VaultFileStore(
+        fileURL: restoredVaultURL,
+        keyData: oldKey
+    )
     let restoreResult = try VaultBackupArchive.restore(
-        from: backupURL,
-        toVaultFileURL: restoredVaultURL,
-        keyFileURL: restoredKeyURL
+        validated,
+        to: destinationStore
     )
     let restoredKey = try Data(contentsOf: restoredKeyURL)
-    let restoredPayload = try VaultFileStore(
-        fileURL: restoredVaultURL,
-        keyData: restoredKey
-    ).load()
+    let restoredPayload = try destinationStore.load()
     let restoredVaultAttributes = try FileManager.default.attributesOfItem(
         atPath: restoredVaultURL.path
     )
@@ -421,15 +1060,40 @@ private func checkBackupArchive() throws {
         atPath: restoredKeyURL.path
     )
     runner.expect(
-        restoreResult.payload == sourcePayload
+        restoreResult == sourcePayload
             && restoredPayload == sourcePayload
-            && restoredKey == sourceKey,
-        "恢复会成对替换保险库和密钥"
+            && restoredKey == oldKey,
+        "恢复使用当前活动密钥且只替换保险库"
     )
     runner.expect(
         restoredVaultAttributes[.posixPermissions] as? NSNumber == NSNumber(value: 0o600)
             && restoredKeyAttributes[.posixPermissions] as? NSNumber == NSNumber(value: 0o600),
-        "恢复后的保险库和密钥权限为 0600"
+        "恢复后的保险库和活动密钥权限为 0600"
+    )
+    runner.expectThrows("备份密钥不能解密恢复后的活动保险库") {
+        _ = try VaultFileStore(
+            fileURL: restoredVaultURL,
+            keyData: sourceKey
+        ).load()
+    }
+
+    let vaultBeforeFailedRestore = try Data(contentsOf: restoredVaultURL)
+    let keyBeforeFailedRestore = try Data(contentsOf: restoredKeyURL)
+    let invalidBackup = ValidatedVaultBackup(
+        manifest: validated.manifest,
+        payload: VaultPayload(
+            formatVersion: VaultPayload.currentFormatVersion + 1
+        )
+    )
+    runner.expectThrows("恢复内容无法重新加密时保留原保险库") {
+        _ = try VaultBackupArchive.restore(invalidBackup, to: destinationStore)
+    }
+    let vaultAfterFailedRestore = try Data(contentsOf: restoredVaultURL)
+    let keyAfterFailedRestore = try Data(contentsOf: restoredKeyURL)
+    runner.expect(
+        vaultAfterFailedRestore == vaultBeforeFailedRestore
+            && keyAfterFailedRestore == keyBeforeFailedRestore,
+        "恢复失败不会改动当前保险库或活动密钥"
     )
 
     try VaultBackupArchive.create(
@@ -459,6 +1123,9 @@ do {
     try checkCrypto()
     try checkFileStore()
     try checkLocalKeyStore()
+    checkLegacyPreferencesMigration()
+    try checkVaultFileLock()
+    try checkLegacyInstallationMigration()
     try checkBackupArchive()
 } catch {
     print("✗ 测试运行异常：\(error.localizedDescription)")

@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 public enum VaultKeyStoreError: Error, LocalizedError {
@@ -45,6 +46,20 @@ public struct VaultKeyStore: Sendable {
         return keyData
     }
 
+    public func loadOrCreateKeyForRestore() throws -> Data {
+        do {
+            if let existing = try loadKey() {
+                return existing
+            }
+        } catch VaultKeyStoreError.invalidData {
+            return try loadLegacyKeyOrCreateReplacement()
+        } catch KeychainError.invalidData {
+            return try createReplacementKey()
+        }
+
+        return try createReplacementKey()
+    }
+
     public func deleteKey() throws {
         if FileManager.default.fileExists(atPath: fileURL.path) {
             try FileManager.default.removeItem(at: fileURL)
@@ -61,10 +76,45 @@ public struct VaultKeyStore: Sendable {
             withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
         )
-        try keyData.write(to: fileURL, options: [.atomic])
+
+        let stagingURL = directory.appendingPathComponent(
+            ".\(fileURL.lastPathComponent).\(UUID().uuidString).tmp"
+        )
+        defer { try? FileManager.default.removeItem(at: stagingURL) }
+
+        try keyData.write(to: stagingURL)
         try FileManager.default.setAttributes(
             [.posixPermissions: 0o600],
-            ofItemAtPath: fileURL.path
+            ofItemAtPath: stagingURL.path
         )
+
+        let renameResult = stagingURL.path.withCString { sourcePath in
+            fileURL.path.withCString { destinationPath in
+                Darwin.rename(sourcePath, destinationPath)
+            }
+        }
+        guard renameResult == 0 else {
+            let code = errno
+            throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
+        }
+    }
+
+    private func loadLegacyKeyOrCreateReplacement() throws -> Data {
+        do {
+            if let legacyKey = try legacyKeychain.loadKey() {
+                try save(legacyKey)
+                return legacyKey
+            }
+        } catch KeychainError.invalidData {
+            return try createReplacementKey()
+        }
+
+        return try createReplacementKey()
+    }
+
+    private func createReplacementKey() throws -> Data {
+        let keyData = VaultCrypto.generateKeyData()
+        try save(keyData)
+        return keyData
     }
 }

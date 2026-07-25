@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 public struct VaultFileStore: Sendable {
@@ -27,11 +28,26 @@ public struct VaultFileStore: Sendable {
         )
 
         let encryptedData = try VaultCrypto.encrypt(payload, keyData: keyData)
-        try encryptedData.write(to: fileURL, options: [.atomic])
+        let stagingURL = directory.appendingPathComponent(
+            ".\(fileURL.lastPathComponent).\(UUID().uuidString).tmp"
+        )
+        defer { try? FileManager.default.removeItem(at: stagingURL) }
+
+        try encryptedData.write(to: stagingURL)
         try FileManager.default.setAttributes(
             [.posixPermissions: 0o600],
-            ofItemAtPath: fileURL.path
+            ofItemAtPath: stagingURL.path
         )
+
+        let renameResult = stagingURL.path.withCString { sourcePath in
+            fileURL.path.withCString { destinationPath in
+                Darwin.rename(sourcePath, destinationPath)
+            }
+        }
+        guard renameResult == 0 else {
+            let code = errno
+            throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
+        }
     }
 
     public func remove() throws {

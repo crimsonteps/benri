@@ -55,7 +55,11 @@ final class VaultMaintenanceController {
             let confirmation = NSAlert()
             confirmation.alertStyle = .warning
             confirmation.messageText = "恢复这个备份？"
-            confirmation.informativeText = "备份包含 \(backup.manifest.recordCount) 条记录，将替换当前保险库。Benri 会先在数据目录中保存一份恢复前备份。"
+            if store.canCreateRecoveryBackup {
+                confirmation.informativeText = "备份包含 \(backup.manifest.recordCount) 条记录，将替换当前保险库。Benri 会先在数据目录中保存一份恢复前备份。"
+            } else {
+                confirmation.informativeText = "备份包含 \(backup.manifest.recordCount) 条记录，将替换当前保险库。当前保险库无法生成恢复前备份。"
+            }
             let restoreButton = confirmation.addButton(withTitle: "恢复")
             restoreButton.hasDestructiveAction = true
             confirmation.addButton(withTitle: "取消")
@@ -63,7 +67,7 @@ final class VaultMaintenanceController {
             guard confirmation.runModal() == .alertFirstButtonReturn else { return }
 
             let result = try store.restoreBackup(
-                from: backupURL,
+                backup,
                 appVersion: applicationVersion
             )
             let recoveryMessage = result.recoveryBackupURL.map {
