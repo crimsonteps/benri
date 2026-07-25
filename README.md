@@ -5,7 +5,7 @@
 <h1 align="center">Benri</h1>
 
 <p align="center">
-  A fast, local-first macOS panel for reusable text.<br>
+  A fast, local-only macOS panel for reusable text.<br>
   Find a note, copy it, and paste it back into your current app without breaking your flow.
 </p>
 
@@ -24,24 +24,27 @@
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-blue.svg"></a>
 </p>
 
-Benri is a lightweight menu bar utility for text you use repeatedly: server commands, account details, addresses, URLs, templates, snippets, and notes. Press a global shortcut, search by title, and press `Return` to copy the selected content and paste it into the app you were using.
+<p align="center">
+  <img src="Resources/benri-panel-readme.png" width="820" alt="Benri main panel">
+</p>
 
-Everything stays on your Mac. Benri has no account system, analytics, network requests, cloud service, or third-party runtime dependencies.
+> [!NOTE]
+> The current `main` branch targets the upcoming v1.1.0 release. The latest public download is still v1.0.0; backup, restore, and diagnostic export will become available with v1.1.0.
 
 ## Highlights
 
-- Global launcher, configurable as `⌥Space`, `⌃Space`, `⌥⌘Space`, or `⌃⌥Space`
-- Keyboard-first navigation across categories, records, and content
-- Free-form multi-line content with automatic saving
-- Custom categories plus four built-in categories
-- Search by record title
-- Copy-only fallback when Accessibility permission is unavailable
-- Light, dark, reduced-transparency, and macOS 26 Liquid Glass support
-- Local AES-256-GCM encrypted storage
-- Validated encrypted-vault backup and restore packages
-- User-exported diagnostics with no record names or content
-- Manual update checking through the official GitHub Releases page
-- No Dock icon, network access, telemetry, or cloud synchronization
+- Open Benri anywhere with a global keyboard shortcut
+- Find reusable text quickly with categories and title search
+- Browse, select, and open read-only previews entirely from the keyboard
+- Press `Return` to copy the selected content and paste it back into the previous app
+- Edit free-form multi-line text with automatic saving and custom categories
+- Keep data encrypted on your Mac, with validated backup and restore
+
+## System experience
+
+- Lives in the menu bar without a Dock icon
+- Adapts to light mode, dark mode, reduced transparency, and macOS 26 Liquid Glass
+- Falls back to copy-only behavior when Accessibility permission is unavailable
 
 ## Requirements
 
@@ -54,9 +57,9 @@ Everything stays on your Mac. Benri has no account system, analytics, network re
 2. Unzip it and move `Benri.app` to `/Applications`.
 3. Open Benri and optionally grant Accessibility permission when macOS asks.
 
-GitHub displays the SHA-256 digest next to the release asset, so no separate checksum file is required.
+GitHub displays the SHA-256 digest next to the release asset, so no separate checksum download is required.
 
-Official releases starting with v1.1.0 are Developer ID signed and notarized. Community builds remain locally or ad-hoc signed and may require you to Control-click the app, choose **Open**, and confirm once.
+The current v1.0.0 build is ad-hoc signed and not notarized, so macOS may require you to Control-click the app and choose **Open**. Starting with v1.1.0, release automation publishes an archive only after Developer ID signing, notarization, and Gatekeeper verification all succeed.
 
 ## Keyboard workflow
 
@@ -64,9 +67,10 @@ Official releases starting with v1.1.0 are Developer ID signed and notarized. Co
 | --- | --- |
 | Configurable global shortcut | Show or hide Benri |
 | `↑` / `↓` | Move through categories or records |
+| `→` | Enter the record list or open the selected record's read-only preview |
+| `←` | Close the preview or return to categories |
 | `Return` | Copy the selected record and paste into the previous app |
 | `⌘F` | Focus the record search field |
-| `⌘←` / `⌘→` | Move between columns |
 | `⌘N` | Create a record |
 | `⌘S` or `⌘Return` | Save in the record editor |
 | `⌘,` | Open Settings |
@@ -74,7 +78,7 @@ Official releases starting with v1.1.0 are Developer ID signed and notarized. Co
 
 If automatic paste is not permitted or cannot complete, the content remains on the system clipboard so you can paste it manually.
 
-## Privacy and security
+## Privacy and data
 
 Benri stores its data in its own Application Support directory:
 
@@ -83,18 +87,16 @@ Benri stores its data in its own Application Support directory:
 ~/Library/Application Support/Benri/vault.key
 ```
 
-- The vault is encrypted as one AES-256-GCM payload.
-- The randomly generated 32-byte key and vault file are both restricted to the current user with `0600` permissions; the containing directory uses `0700`.
-- Benri does not send data over the network.
-- Benri never silently replaces a vault that it cannot decrypt.
-- Backups are validated before restore, and Benri keeps a recovery backup before replacing a healthy vault.
-- Resetting the vault permanently deletes the encrypted data and its local key.
+- The vault is encrypted with AES-256-GCM and restricted to the current macOS user.
+- Benri does not upload records, keys, or usage data, and makes no background network requests.
+- Benri never silently replaces a vault that it cannot decrypt or recognize.
+- Backups are validated before restore, and a recovery copy is kept before replacing a healthy vault.
 
-The key is stored under the same macOS user account to avoid a password or Keychain prompt on every launch. This protects data at rest from casual disclosure, but it does **not** protect against software or a person that already has access to your logged-in account. A `.benribackup` package includes the matching key so it can restore the vault on another Mac; protect backup files as carefully as the original data. Content copied from Benri also enters the macOS clipboard and follows normal system clipboard behavior. Benri is a convenience utility, not a replacement for a dedicated password manager.
+The key and encrypted vault are stored under the same macOS user account, so Benri cannot defend against software or people that already control the logged-in account. A `.benribackup` package includes the matching recovery key and must be protected like the original data. Benri is a convenience utility, not a replacement for a dedicated password manager. See [SECURITY.md](SECURITY.md) for the complete security boundary.
 
 Use **File → Back Up Vault…**, **Restore Vault…**, or **Export Diagnostics…**. Diagnostic reports contain version, system, permission, and file metadata only; they intentionally exclude record names and content.
 
-Please report security issues through [GitHub's private security advisory form](https://github.com/crimsonteps/benri/security/advisories/new), not a public issue. See [SECURITY.md](SECURITY.md).
+Please report security issues through [GitHub's private security advisory form](https://github.com/crimsonteps/benri/security/advisories/new), not a public issue.
 
 ## Build from source
 
@@ -112,27 +114,23 @@ Useful commands:
 
 ```bash
 make build       # Debug build
-make test        # Run the zero-dependency checks
-make app         # Build an app for the current architecture
 make release     # Build a Universal 2 release zip
 make clean
 ```
 
-When built with an older SDK, Benri automatically uses the system Material appearance. Builds made with the macOS 26 SDK use native Liquid Glass on macOS 26 while keeping the same macOS 13 deployment target.
-
 ## Project structure
 
 ```text
-Sources/Benri/        AppKit and SwiftUI application
-Sources/BenriCore/    Models, encryption, key, and file storage
-Sources/BenriChecks/  Zero-dependency automated checks
-Resources/                 Info.plist and app icon source
-Scripts/                   App and release packaging
+Sources/Benri/       AppKit and SwiftUI application
+Sources/BenriCore/   Models, encryption, key, and file storage
+Sources/BenriChecks/ Automated checks
+Resources/           Info.plist, icons, and README images
+Scripts/             App and release packaging
 ```
 
 ## Scope
 
-Version 1 focuses on a reliable local workflow. Cloud sync, browser autofill, plaintext import/export, password generation, launch at login, and cross-platform support are not currently included.
+Benri intentionally stays focused on a fast, private, single-Mac workflow for reusable text. Cloud sync, browser autofill, and cross-platform clients are outside the current scope.
 
 ## Contributing
 

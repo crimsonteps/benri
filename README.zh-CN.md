@@ -5,7 +5,7 @@
 <h1 align="center">Benri</h1>
 
 <p align="center">
-  一个快速、本地优先的 macOS 常用资料面板。<br>
+  一个快速、完全本地的 macOS 常用资料面板。<br>
   找到资料、复制，并直接粘贴回正在使用的应用，不打断当前工作。
 </p>
 
@@ -17,24 +17,34 @@
   <a href="https://github.com/crimsonteps/benri/issues">反馈问题</a>
 </p>
 
-Benri 是一款轻量的 macOS 菜单栏工具，用来保存经常重复使用的文本，例如服务器命令、账号资料、地址、网址、回复模板、代码片段和备注。按下全局快捷键，通过名称搜索，再按 `Return`，即可复制所选内容并自动粘贴回刚才使用的应用。
+<p align="center">
+  <a href="https://github.com/crimsonteps/benri/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/crimsonteps/benri/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-black?logo=apple">
+  <img alt="Swift 6" src="https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white">
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-blue.svg"></a>
+</p>
 
-所有数据只保存在你的 Mac 上。Benri 没有账号系统、统计分析、网络请求、云服务或第三方运行时依赖。
+<p align="center">
+  <img src="Resources/benri-panel-readme.png" width="820" alt="Benri 主面板">
+</p>
+
+> [!NOTE]
+> 当前 `main` 分支面向即将发布的 v1.1.0。GitHub 最新公开下载仍是 v1.0.0，备份恢复和诊断导出等新功能会随 v1.1.0 提供。
 
 ## 主要功能
 
-- 全局唤起，可选 `⌥Space`、`⌃Space`、`⌥⌘Space` 或 `⌃⌥Space`
-- 分类、记录和正文之间的全键盘操作
-- 自由多行正文，编辑后自动保存
-- 自定义分类，以及个人、工作、服务器、其他四个内置分类
-- 按记录名称搜索
+- 使用全局快捷键随时唤起 Benri
+- 通过分类和名称搜索快速找到常用文本
+- 使用键盘完成浏览、选择和只读预览
+- 按下 `Return`，将所选内容复制并粘贴回之前使用的应用
+- 支持多行文本编辑、自动保存和自定义分类
+- 数据在本机加密保存，并支持备份与恢复
+
+## 系统体验
+
+- 常驻菜单栏，不显示 Dock 图标
+- 自动适配浅色、深色、降低透明度和 macOS 26 Liquid Glass
 - 没有辅助功能权限时自动退回“仅复制”
-- 支持浅色、深色、降低透明度和 macOS 26 Liquid Glass
-- 本地 AES-256-GCM 加密存储
-- 可校验的加密保险库备份与恢复
-- 主动导出的诊断报告不包含记录名称和正文
-- 手动打开官方 GitHub Releases 页面检查更新
-- 不显示 Dock 图标，不联网，不收集遥测，不进行云同步
 
 ## 系统要求
 
@@ -47,9 +57,9 @@ Benri 是一款轻量的 macOS 菜单栏工具，用来保存经常重复使用�
 2. 解压后将 `Benri.app` 移到 `/Applications`。
 3. 打开 Benri；如果需要自动粘贴，可按系统提示授予辅助功能权限。
 
-GitHub 会在 Release 安装包旁直接显示 SHA-256，无需再下载单独的校验文件。
+GitHub 会在 Release 安装包旁直接显示 SHA-256，无需下载单独的校验文件。
 
-从 v1.1.0 开始，官方 Release 使用 Developer ID 签名并完成 Apple 公证。社区自行构建的版本仍使用本地或 ad-hoc 签名，首次打开时可能需要按住 Control 点击应用并选择“打开”。
+当前 v1.0.0 使用 ad-hoc 签名且未经过 Apple 公证，首次打开时可能需要按住 Control 点击应用并选择“打开”。从 v1.1.0 开始，Release 自动化只有在 Developer ID 签名、公证和 Gatekeeper 检查全部通过后才会发布安装包。
 
 ## 快捷键
 
@@ -57,9 +67,10 @@ GitHub 会在 Release 安装包旁直接显示 SHA-256，无需再下载单独�
 | --- | --- |
 | 可配置的全局快捷键 | 显示或隐藏 Benri |
 | `↑` / `↓` | 在分类或记录中移动 |
+| `→` | 进入记录列表，或打开所选记录的只读预览 |
+| `←` | 关闭预览，或返回分类 |
 | `Return` | 复制所选记录，并粘贴回之前的应用 |
 | `⌘F` | 聚焦记录搜索框 |
-| `⌘←` / `⌘→` | 在不同栏位之间切换 |
 | `⌘N` | 新建记录 |
 | `⌘S` 或 `⌘Return` | 在记录编辑器中保存 |
 | `⌘,` | 打开设置 |
@@ -67,7 +78,7 @@ GitHub 会在 Release 安装包旁直接显示 SHA-256，无需再下载单独�
 
 如果自动粘贴没有权限或执行失败，内容仍会保留在系统剪贴板中，可以手动粘贴。
 
-## 隐私与安全
+## 隐私与数据
 
 Benri 使用独立的应用支持目录保存数据：
 
@@ -76,18 +87,16 @@ Benri 使用独立的应用支持目录保存数据：
 ~/Library/Application Support/Benri/vault.key
 ```
 
-- 保险库整体使用 AES-256-GCM 加密。
-- 随机生成的 32 字节密钥和保险库文件权限均为 `0600`，目录权限为 `0700`，仅当前用户可访问。
-- Benri 不会通过网络发送数据。
-- 保险库无法解密时，Benri 不会静默覆盖原文件。
-- 恢复前会完整校验备份；替换正常保险库前，还会自动保存一份恢复前备份。
-- 重置保险库会永久删除加密数据和本地密钥。
+- 保险库整体使用 AES-256-GCM 加密，并限制为当前 macOS 用户访问。
+- Benri 不会上传记录、密钥或使用数据，也不会在后台发起网络请求。
+- 无法解密或识别保险库时，Benri 不会静默覆盖原文件。
+- 恢复前会校验备份，并在替换正常保险库前保存恢复副本。
 
-为了避免每次启动都要求输入密码或确认钥匙串，密钥和密文保存在同一个 macOS 用户账户下。这能降低静态文件被随手读取的风险，但**无法**防御已经取得当前登录账户权限的软件或人员。`.benribackup` 备份包会包含匹配的解密密钥，以便在另一台 Mac 上恢复，因此也需要像原始数据一样妥善保管。复制内容后，文本也会进入 macOS 系统剪贴板，并遵循系统正常的剪贴板行为。Benri 是效率工具，不是专业密码管理器的替代品。
+密钥和密文保存在同一个 macOS 用户账户下，因此 Benri 无法防御已经控制当前登录账户的软件或人员。`.benribackup` 文件包含恢复所需的匹配密钥，也需要像原始数据一样妥善保管。Benri 是效率工具，不是专业密码管理器的替代品。完整安全边界见 [SECURITY.md](SECURITY.md)。
 
 可以通过“文件 → 备份保险库… / 恢复保险库… / 导出诊断信息…”进行数据维护。诊断报告只包含版本、系统、权限和文件元数据，不包含任何记录名称或正文。
 
-安全问题请使用 [GitHub 私密安全报告](https://github.com/crimsonteps/benri/security/advisories/new)，不要提交公开 Issue。详见 [SECURITY.md](SECURITY.md)。
+安全问题请使用 [GitHub 私密安全报告](https://github.com/crimsonteps/benri/security/advisories/new)，不要提交公开 Issue。
 
 ## 从源码构建
 
@@ -105,27 +114,23 @@ open dist/Benri.app
 
 ```bash
 make build       # Debug 构建
-make test        # 运行零依赖检查
-make app         # 为当前架构生成 Benri.app
 make release     # 生成 Universal 2 Release 压缩包
 make clean
 ```
 
-使用较旧 SDK 构建时，Benri 会自动使用系统 Material 外观；使用 macOS 26 SDK 构建时，会在 macOS 26 上启用原生 Liquid Glass，同时继续保持 macOS 13 的最低部署版本。
-
 ## 项目结构
 
 ```text
-Sources/Benri/        AppKit 与 SwiftUI 应用代码
-Sources/BenriCore/    模型、加密、密钥和文件存储
-Sources/BenriChecks/  零依赖自动检查
-Resources/                 Info.plist 与应用图标源文件
-Scripts/                   应用与 Release 打包脚本
+Sources/Benri/       AppKit 与 SwiftUI 应用代码
+Sources/BenriCore/   模型、加密、密钥和文件存储
+Sources/BenriChecks/ 自动化检查
+Resources/           Info.plist、图标与 README 图片
+Scripts/             应用与 Release 打包脚本
 ```
 
 ## 当前范围
 
-v1 专注于可靠的本地使用流程，暂不包含云同步、浏览器自动填充、明文导入导出、密码生成、开机启动和跨平台支持。
+Benri 专注于单机、快速、私密的常用文本工作流。云同步、浏览器自动填充和跨平台客户端暂不在当前范围内。
 
 ## 参与贡献
 
