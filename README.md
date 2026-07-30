@@ -72,7 +72,11 @@ The current v1.0.0 build is ad-hoc signed and not notarized, so macOS may requir
 | `Return` | Copy the selected record and paste into the previous app |
 | `⌘F` | Focus the record search field |
 | `⌘N` | Create a record |
-| `⌘S` or `⌘Return` | Save in the record editor |
+| `⌘⇧N` | Create a category |
+| `⌃Return` | Open the action menu for the selected category or record |
+| `⌘E` | Edit the selected category or record |
+| `⌘⌫` | Delete the selected category or record |
+| `⌘S` or `⌘Return` | Save record or category edits |
 | `⌘,` | Open Settings |
 | `Esc` | Close the editor or hide the panel |
 

@@ -9,25 +9,27 @@ func releasePanelEditingFocus() {
 }
 
 enum VaultLayout {
-    static let collapsedWindowWidth: CGFloat = 340
+    static let collapsedWindowWidth: CGFloat = 379
     static let expandedWindowWidth: CGFloat = 820
-    static let windowHeight: CGFloat = 520
-    static let windowInset: CGFloat = 7
-    static let columnSpacing: CGFloat = 8
-    static let categoryWidth: CGFloat = 56
-    static let recordListWidth: CGFloat = 268
-    static let navigationCornerRadius: CGFloat = 18
-    static let contentCornerRadius: CGFloat = 14
+    static let windowHeight: CGFloat = 500
+    static let windowInset: CGFloat = 10
+    static let columnSpacing: CGFloat = 10
+    static let categoryWidth: CGFloat = 58
+    static let recordListWidth: CGFloat = 300
+    static let navigationCornerRadius = BenriTheme.Radius.panel
+    static let contentCornerRadius = BenriTheme.Radius.contentPanel
     static let previewMinimumHeight: CGFloat = 160
-    static let contentPanelMaximumHeight = windowHeight - windowInset * 2
+    static let contentPanelMaximumHeight = windowHeight - windowInset * 3
 }
 
 struct VaultPanelView: View {
     @ObservedObject var store: VaultViewModel
     @ObservedObject var settings: AppSettings
+    let recordContextMenuAnchor: RecordContextMenuAnchor
     let openSettings: () -> Void
     let onClose: () -> Void
     let onPasteRecord: (UUID) -> Void
+    let onShowActions: () -> Void
     let onEditorDismissed: () -> Void
 
     private let sidebarExpanded = false
@@ -44,13 +46,7 @@ struct VaultPanelView: View {
                     openDataFolder: store.openDataFolder,
                     resetVault: store.requestReset
                 )
-                .clipShape(
-                    RoundedRectangle(
-                        cornerRadius: VaultLayout.contentCornerRadius,
-                        style: .continuous
-                    )
-                )
-                .benriGlass(cornerRadius: VaultLayout.contentCornerRadius)
+                .benriPaletteSurface(cornerRadius: VaultLayout.contentCornerRadius)
                 .padding(VaultLayout.windowInset)
                 .ignoresSafeArea()
             } else {
@@ -90,21 +86,20 @@ struct VaultPanelView: View {
                 )
                 .frame(width: sidebarExpanded ? 156 : VaultLayout.categoryWidth)
 
-                Divider().opacity(0.28)
+                Rectangle()
+                    .fill(Color.primary.opacity(0.09))
+                    .frame(width: 1)
+                    .padding(.vertical, BenriTheme.Spacing.xl)
 
                 RecordListView(
                     store: store,
-                    onPasteRecord: onPasteRecord
+                    contextMenuAnchor: recordContextMenuAnchor,
+                    onPasteRecord: onPasteRecord,
+                    onShowActions: onShowActions
                 )
                     .frame(width: VaultLayout.recordListWidth)
             }
-            .clipShape(
-                RoundedRectangle(
-                    cornerRadius: VaultLayout.navigationCornerRadius,
-                    style: .continuous
-                )
-            )
-            .benriGlass(cornerRadius: VaultLayout.navigationCornerRadius)
+            .benriPaletteSurface(cornerRadius: VaultLayout.navigationCornerRadius)
 
             if showsRecordPanel {
                 RecordPanelView(store: store)
@@ -113,13 +108,7 @@ struct VaultPanelView: View {
                         maxHeight: store.recordPanelMode == .edit ? .infinity : nil,
                         alignment: .top
                     )
-                    .clipShape(
-                        RoundedRectangle(
-                            cornerRadius: VaultLayout.contentCornerRadius,
-                            style: .continuous
-                        )
-                    )
-                    .benriGlass(cornerRadius: VaultLayout.contentCornerRadius)
+                    .benriPaletteSurface(cornerRadius: VaultLayout.contentCornerRadius)
             }
         }
         .padding(.horizontal, VaultLayout.windowInset)
@@ -141,6 +130,15 @@ struct VaultPanelView: View {
                 title: Text("重置保险库？"),
                 message: Text("现有加密数据和本机密钥都会被删除，此操作无法撤销。"),
                 primaryButton: .destructive(Text("重置"), action: store.resetVault),
+                secondaryButton: .cancel(Text("取消"))
+            )
+        case let .confirmDeleteRecord(id):
+            return Alert(
+                title: Text("删除记录？"),
+                message: Text("这条记录将被永久删除。"),
+                primaryButton: .destructive(Text("删除")) {
+                    store.deleteRecord(id)
+                },
                 secondaryButton: .cancel(Text("取消"))
             )
         case let .confirmDeleteCategory(id):

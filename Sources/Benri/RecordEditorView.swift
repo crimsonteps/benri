@@ -93,10 +93,10 @@ struct RecordEditorView: View {
                 nameIsFocused = true
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .benriSaveRecordEditor)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .benriSaveActiveEditor)) { _ in
             save()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .benriCancelRecordEditor)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .benriCancelActiveEditor)) { _ in
             cancel()
         }
     }

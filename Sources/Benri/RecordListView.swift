@@ -5,7 +5,9 @@ import SwiftUI
 
 struct RecordListView: View {
     @ObservedObject var store: VaultViewModel
+    let contextMenuAnchor: RecordContextMenuAnchor
     let onPasteRecord: (UUID) -> Void
+    let onShowActions: () -> Void
     @FocusState private var searchIsFocused: Bool
     @State private var scrollContentFrame = CGRect.null
     @State private var scrollViewportHeight: CGFloat = 0
@@ -15,9 +17,7 @@ struct RecordListView: View {
     var body: some View {
         VStack(spacing: 0) {
             searchBar
-                .padding(.horizontal, 12)
-                .padding(.top, 11)
-                .padding(.bottom, 8)
+                .frame(height: BenriTheme.Size.searchHeaderHeight)
 
             if store.filteredRecords.isEmpty {
                 RecordListEmptyView(hasQuery: !store.searchText.isEmpty) {
@@ -30,6 +30,7 @@ struct RecordListView: View {
                             ForEach(store.filteredRecords) { record in
                                 RecordRow(
                                     record: record,
+                                    contextMenuAnchor: contextMenuAnchor,
                                     categoryName: store.selectedCategoryID == nil
                                         ? store.categoryName(for: record.categoryID)
                                         : nil,
@@ -45,7 +46,7 @@ struct RecordListView: View {
                                     releasePanelEditingFocus()
                                     store.beginEditingRecord(record.id)
                                 } deleteAction: {
-                                    store.deleteRecord(record.id)
+                                    store.requestDeleteRecord(record.id)
                                 }
                                 .id(record.id)
                             }
@@ -58,8 +59,9 @@ struct RecordListView: View {
                                 )
                             }
                         }
-                        .padding(.horizontal, 7)
-                        .padding(.bottom, 7)
+                        .padding(.horizontal, BenriTheme.Spacing.md)
+                        .padding(.top, BenriTheme.Spacing.xs)
+                        .padding(.bottom, BenriTheme.Spacing.md)
                     }
                     .coordinateSpace(name: scrollCoordinateSpace)
                     .background {
@@ -98,21 +100,26 @@ struct RecordListView: View {
                     }
                 }
             }
+
+            actionFooter
         }
         .background(Color.clear)
         .onReceive(NotificationCenter.default.publisher(for: .benriFocusSearch)) { _ in
             searchIsFocused = true
+            store.setSearchFocused(true)
             DispatchQueue.main.async {
                 NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .benriClearSearchFocus)) { _ in
             searchIsFocused = false
+            store.setSearchFocused(false)
+        }
+        .onChange(of: searchIsFocused) { focused in
+            store.setSearchFocused(focused)
         }
         .onChange(of: store.searchText) { _ in
-            store.closeRecordPanel()
-            store.keyboardPane = .records
-            store.ensureSelection()
+            store.handleFilterChange()
         }
         .onChange(of: store.selectedCategoryID) { _ in
             store.ensureSelection()
@@ -128,43 +135,83 @@ struct RecordListView: View {
     }
 
     private var searchBar: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 7) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-                TextField("搜索记录名称", text: $store.searchText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                    .focused($searchIsFocused)
-                if !store.searchText.isEmpty {
-                    Button {
-                        store.searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.tertiary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("清空搜索")
+        HStack(spacing: BenriTheme.Spacing.lg) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            TextField("搜索记录名称", text: $store.searchText)
+                .textFieldStyle(.plain)
+                .font(BenriTheme.Typography.search)
+                .focused($searchIsFocused)
+                .onSubmit {
+                    guard let recordID = store.selectedRecordID else { return }
+                    onPasteRecord(recordID)
                 }
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 30)
-            .background(Color.primary.opacity(0.065), in: RoundedRectangle(cornerRadius: 9))
-            .overlay {
-                RoundedRectangle(cornerRadius: 9)
-                    .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+
+            if !store.searchText.isEmpty {
+                Button {
+                    store.searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help("清空搜索")
             }
 
             Button(action: store.beginNewRecord) {
                 Image(systemName: "plus")
-                    .font(.system(size: 12, weight: .semibold))
-                    .frame(width: 14, height: 14)
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(
+                        width: BenriTheme.Size.floatingButton,
+                        height: BenriTheme.Size.floatingButton
+                    )
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
-            .keyboardShortcut("n", modifiers: .command)
+            .benriFloatingCircleButton()
             .help("新建记录 ⌘N")
+        }
+        .padding(.horizontal, BenriTheme.Spacing.xl)
+    }
+
+    @ViewBuilder
+    private var actionFooter: some View {
+        if let record = store.selectedRecord,
+           store.recordPanelMode != .edit {
+            HStack {
+                Spacer(minLength: 0)
+
+                HStack(spacing: BenriTheme.Spacing.xl) {
+                    Button {
+                        onPasteRecord(record.id)
+                    } label: {
+                        HStack(spacing: BenriTheme.Spacing.sm) {
+                            Text("粘贴")
+                            BenriKeyCap(text: "↵")
+                        }
+                    }
+                    .disabled(record.content.isEmpty)
+
+                    Button {
+                        store.activateRecordNavigation()
+                        onShowActions()
+                    } label: {
+                        HStack(spacing: BenriTheme.Spacing.sm) {
+                            Text("操作")
+                            BenriKeyCap(text: "⌃↵")
+                        }
+                    }
+                }
+                .font(BenriTheme.Typography.footer)
+                .buttonStyle(.plain)
+                .padding(.horizontal, BenriTheme.Spacing.xl)
+                .frame(height: 36)
+                .benriFloatingSurface(in: Capsule())
+            }
+            .padding(.horizontal, BenriTheme.Spacing.md)
+            .frame(height: BenriTheme.Size.footerHeight)
+        } else {
+            Color.clear.frame(height: BenriTheme.Size.footerHeight)
         }
     }
 }
@@ -245,6 +292,7 @@ private struct RecordListEdgeBlur: View {
 
 private struct RecordRow: View {
     let record: VaultRecord
+    let contextMenuAnchor: RecordContextMenuAnchor
     let categoryName: String?
     let isSelected: Bool
     let isKeyboardActive: Bool
@@ -254,6 +302,7 @@ private struct RecordRow: View {
     let deleteAction: () -> Void
 
     @State private var isHovering = false
+    @Environment(\.colorScheme) private var colorScheme
 
     private var preview: String {
         let firstLine = record.content
@@ -270,24 +319,31 @@ private struct RecordRow: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(record.name)
-                    .font(.system(size: 13, weight: .semibold))
-                    .lineLimit(1)
+            HStack(spacing: BenriTheme.Spacing.lg) {
+                VStack(alignment: .leading, spacing: BenriTheme.Spacing.xxs) {
+                    Text(record.name)
+                        .font(BenriTheme.Typography.rowTitle)
+                        .lineLimit(1)
 
-                Text(subtitle)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                    Text(subtitle)
+                        .font(BenriTheme.Typography.rowDetail)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+
+                Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .frame(minHeight: 52)
+            .padding(.horizontal, BenriTheme.Spacing.md)
+            .padding(.vertical, BenriTheme.Spacing.sm)
+            .frame(minHeight: 50)
             .contentShape(Rectangle())
             .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(
+                    cornerRadius: BenriTheme.Radius.row,
+                    style: .continuous
+                )
                     .fill(rowBackground)
             }
         }
@@ -298,6 +354,8 @@ private struct RecordRow: View {
         )
         .overlay {
             FixedRecordContextMenu(
+                anchor: contextMenuAnchor,
+                isSelected: isSelected,
                 prepare: action,
                 editAction: editAction,
                 deleteAction: deleteAction
@@ -309,9 +367,14 @@ private struct RecordRow: View {
 
     private var rowBackground: Color {
         if isSelected {
-            return Color.accentColor.opacity(isKeyboardActive ? 0.16 : 0.1)
+            return BenriTheme.Colors.selection(
+                for: colorScheme,
+                active: isKeyboardActive
+            )
         }
-        return isHovering ? Color.primary.opacity(0.04) : Color.clear
+        return isHovering
+            ? BenriTheme.Colors.rowHover(for: colorScheme)
+            : Color.clear
     }
 }
 

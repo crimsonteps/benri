@@ -3,7 +3,7 @@ import Combine
 import BenriCore
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private static let legacyCleanupPendingKey = "legacyQuickVaultCleanupPending.v1"
 
     private let settings: AppSettings
@@ -212,6 +212,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func newRecord() {
         panelController.showNewRecord()
+    }
+
+    @objc private func newCategory() {
+        panelController.show()
+        store.beginNewCategory()
+    }
+
+    @objc private func focusSearchFromKeyboard() {
+        panelController.focusSearchFromKeyboard()
+    }
+
+    @objc private func showKeyboardActionMenu() {
+        panelController.showKeyboardActionMenu()
+    }
+
+    @objc private func editKeyboardSelection() {
+        panelController.editKeyboardSelection()
+    }
+
+    @objc private func deleteKeyboardSelection() {
+        panelController.deleteKeyboardSelection()
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard let panelController else { return false }
+
+        switch menuItem.action {
+        case #selector(newRecord), #selector(newCategory):
+            return panelController.canPresentEditorFromKeyboard
+        case #selector(focusSearchFromKeyboard):
+            return panelController.canFocusSearchFromKeyboard
+        case #selector(showKeyboardActionMenu):
+            return panelController.canShowKeyboardActionMenu
+        case #selector(editKeyboardSelection):
+            return panelController.canEditKeyboardSelection
+        case #selector(deleteKeyboardSelection):
+            return panelController.canDeleteKeyboardSelection
+        default:
+            return true
+        }
     }
 
     @objc private func openSettings() {
@@ -466,6 +506,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             action: #selector(newRecord),
             keyEquivalent: "n"
         ).target = self
+        let newCategoryItem = fileMenu.addItem(
+            withTitle: "新建分类",
+            action: #selector(newCategory),
+            keyEquivalent: "n"
+        )
+        newCategoryItem.keyEquivalentModifierMask = [.command, .shift]
+        newCategoryItem.target = self
         fileMenu.addItem(.separator())
         fileMenu.addItem(
             withTitle: "备份保险库…",
@@ -507,6 +554,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editMenu.addItem(withTitle: "复制", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         editMenu.addItem(withTitle: "粘贴", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         editMenu.addItem(withTitle: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenu.addItem(.separator())
+
+        editMenu.addItem(
+            withTitle: "搜索记录",
+            action: #selector(focusSearchFromKeyboard),
+            keyEquivalent: "f"
+        ).target = self
+
+        let actionMenuItem = editMenu.addItem(
+            withTitle: "显示所选项目的操作菜单",
+            action: #selector(showKeyboardActionMenu),
+            keyEquivalent: "\r"
+        )
+        actionMenuItem.keyEquivalentModifierMask = [.control]
+        actionMenuItem.target = self
+
+        editMenu.addItem(
+            withTitle: "编辑所选项目",
+            action: #selector(editKeyboardSelection),
+            keyEquivalent: "e"
+        ).target = self
+
+        let deleteSelectionItem = editMenu.addItem(
+            withTitle: "删除所选项目",
+            action: #selector(deleteKeyboardSelection),
+            keyEquivalent: "\u{7F}"
+        )
+        deleteSelectionItem.keyEquivalentModifierMask = [.command]
+        deleteSelectionItem.target = self
         editItem.submenu = editMenu
         mainMenu.addItem(editItem)
 

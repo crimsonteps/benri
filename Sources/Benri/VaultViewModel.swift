@@ -23,6 +23,11 @@ enum KeyboardPane {
     case value
 }
 
+enum KeyboardActionTarget: Equatable {
+    case category(UUID)
+    case record(UUID)
+}
+
 enum RecordPanelMode: Equatable {
     case closed
     case preview
@@ -32,6 +37,7 @@ enum RecordPanelMode: Equatable {
 enum VaultAlert: Identifiable, Equatable {
     case saveError(String)
     case confirmReset
+    case confirmDeleteRecord(UUID)
     case confirmDeleteCategory(UUID)
 
     var id: String {
@@ -40,6 +46,8 @@ enum VaultAlert: Identifiable, Equatable {
             return "save-\(message)"
         case .confirmReset:
             return "reset"
+        case let .confirmDeleteRecord(id):
+            return "record-\(id.uuidString)"
         case let .confirmDeleteCategory(id):
             return "category-\(id.uuidString)"
         }
@@ -84,9 +92,10 @@ final class VaultViewModel: ObservableObject {
     @Published var recordEditor: RecordEditorContext?
     @Published var categoryEditor: CategoryEditorContext?
     @Published var alert: VaultAlert?
-    @Published var keyboardPane: KeyboardPane = .records
-    @Published var recordPanelMode: RecordPanelMode = .closed
+    @Published private(set) var keyboardPane: KeyboardPane = .records
+    @Published private(set) var recordPanelMode: RecordPanelMode = .closed
     @Published var isEditingRecordName = false
+    @Published private(set) var isSearchFocused = false
 
     let vaultFileURL: URL
 
@@ -136,6 +145,37 @@ final class VaultViewModel: ObservableObject {
     var selectedRecord: VaultRecord? {
         guard let selectedRecordID else { return nil }
         return payload.records.first(where: { $0.id == selectedRecordID })
+    }
+
+    var keyboardActionTarget: KeyboardActionTarget? {
+        switch keyboardPane {
+        case .categories:
+            return selectedCategoryID.map(KeyboardActionTarget.category)
+        case .records:
+            return selectedRecordID.map(KeyboardActionTarget.record)
+        case .value:
+            return nil
+        }
+    }
+
+    var canEditKeyboardSelection: Bool {
+        guard canModifyVault, let target = keyboardActionTarget else { return false }
+        switch target {
+        case let .category(id):
+            return category(id: id) != nil
+        case let .record(id):
+            return record(id: id) != nil
+        }
+    }
+
+    var canDeleteKeyboardSelection: Bool {
+        guard canModifyVault, let target = keyboardActionTarget else { return false }
+        switch target {
+        case let .category(id):
+            return payload.categories.count > 1 && category(id: id) != nil
+        case let .record(id):
+            return record(id: id) != nil
+        }
     }
 
     var canModifyVault: Bool {
@@ -192,6 +232,12 @@ final class VaultViewModel: ObservableObject {
     }
 
     func moveKeyboardPaneLeft() {
+        guard recordPanelMode != .edit else { return }
+        if recordPanelMode == .preview {
+            closeRecordPanel()
+            return
+        }
+
         switch keyboardPane {
         case .categories:
             break
@@ -203,12 +249,39 @@ final class VaultViewModel: ObservableObject {
     }
 
     func moveKeyboardPaneRight() {
+        guard recordPanelMode != .edit else { return }
         switch keyboardPane {
         case .categories:
             keyboardPane = .records
-        case .records, .value:
+        case .records:
+            showSelectedRecordPreview()
+        case .value:
             break
         }
+    }
+
+    func setSearchFocused(_ focused: Bool) {
+        isSearchFocused = focused
+        if focused {
+            closeRecordPanel()
+            keyboardPane = .records
+        }
+    }
+
+    func activateRecordNavigation() {
+        guard recordPanelMode != .edit else { return }
+        keyboardPane = .records
+    }
+
+    func handleFilterChange() {
+        closeRecordPanel()
+        keyboardPane = .records
+        ensureSelection()
+    }
+
+    func activateRecordEditingFocus() {
+        guard recordPanelMode == .edit else { return }
+        keyboardPane = .value
     }
 
     func ensureSelection() {
@@ -220,6 +293,10 @@ final class VaultViewModel: ObservableObject {
     }
 
     func moveSelection(_ direction: Int) {
+        guard keyboardPane == .records,
+              recordPanelMode == .closed || recordPanelMode == .preview
+        else { return }
+
         let records = filteredRecords
         guard !records.isEmpty else {
             selectedRecordID = nil
@@ -274,12 +351,14 @@ final class VaultViewModel: ObservableObject {
     func beginNewRecord() {
         guard canModifyVault else { return }
         closeRecordPanel()
+        keyboardPane = .records
         recordEditor = RecordEditorContext(recordID: nil)
     }
 
     func beginNewCategory() {
         guard canModifyVault else { return }
         closeRecordPanel()
+        keyboardPane = .categories
         categoryEditor = CategoryEditorContext(categoryID: nil)
     }
 
@@ -287,6 +366,7 @@ final class VaultViewModel: ObservableObject {
         guard canModifyVault,
               category(id: id) != nil
         else { return }
+        selectCategory(id)
         categoryEditor = CategoryEditorContext(categoryID: id)
     }
 
@@ -334,17 +414,67 @@ final class VaultViewModel: ObservableObject {
         selectedCategoryID = safeCategoryID
         selectedRecordID = recordID
         recordPanelMode = .closed
+        keyboardPane = .records
         persistChanges()
+    }
+
+    func beginEditingKeyboardSelection() -> Bool {
+        guard canEditKeyboardSelection, let target = keyboardActionTarget else { return false }
+        switch target {
+        case let .category(id):
+            beginEditingCategory(id)
+        case let .record(id):
+            beginEditingRecord(id)
+        }
+        return true
+    }
+
+    func requestDeleteKeyboardSelection() -> Bool {
+        guard canDeleteKeyboardSelection, let target = keyboardActionTarget else { return false }
+        switch target {
+        case let .category(id):
+            requestDeleteCategory(id)
+        case let .record(id):
+            requestDeleteRecord(id)
+        }
+        return true
+    }
+
+    func finishInlineRecordEditing() -> Bool {
+        guard recordPanelMode == .edit else { return false }
+        closeRecordPanel()
+        return true
+    }
+
+    func requestDeleteRecord(_ id: UUID) {
+        guard canModifyVault, record(id: id) != nil else { return }
+        selectRecord(id)
+        alert = .confirmDeleteRecord(id)
     }
 
     func deleteRecord(_ id: UUID) {
         guard canModifyVault else { return }
-        if selectedRecordID == id {
+        let visibleRecordIDs = filteredRecords.map(\.id)
+        let deletedIndex = visibleRecordIDs.firstIndex(of: id)
+        let deletedSelectedRecord = selectedRecordID == id
+        if deletedSelectedRecord {
             closeRecordPanel()
         }
         flushPendingRecordSave()
         payload.records.removeAll(where: { $0.id == id })
-        ensureSelection()
+        if deletedSelectedRecord {
+            let remainingRecords = filteredRecords
+            if let deletedIndex, !remainingRecords.isEmpty {
+                selectedRecordID = remainingRecords[
+                    min(deletedIndex, remainingRecords.count - 1)
+                ].id
+            } else {
+                selectedRecordID = remainingRecords.first?.id
+            }
+        } else {
+            ensureSelection()
+        }
+        keyboardPane = .records
         persistChanges()
     }
 
@@ -395,10 +525,12 @@ final class VaultViewModel: ObservableObject {
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanName.isEmpty else { return }
 
+        let savedCategoryID: UUID
         if let id,
            let index = payload.categories.firstIndex(where: { $0.id == id }) {
             payload.categories[index].name = cleanName
             payload.categories[index].iconName = iconName
+            savedCategoryID = id
         } else {
             let nextOrder = (payload.categories.map(\.sortOrder).max() ?? -1) + 1
             let category = VaultCategory(
@@ -407,9 +539,12 @@ final class VaultViewModel: ObservableObject {
                 sortOrder: nextOrder
             )
             payload.categories.append(category)
-            selectedCategoryID = category.id
+            savedCategoryID = category.id
         }
 
+        closeRecordPanel()
+        selectedCategoryID = savedCategoryID
+        keyboardPane = .categories
         ensureSelection()
         persistChanges()
     }
@@ -419,6 +554,7 @@ final class VaultViewModel: ObservableObject {
               payload.categories.count > 1,
               category(id: id) != nil
         else { return }
+        selectCategory(id)
         alert = .confirmDeleteCategory(id)
     }
 
@@ -430,6 +566,7 @@ final class VaultViewModel: ObservableObject {
             closeRecordPanel()
             selectedCategoryID = replacementCategoryID
         }
+        keyboardPane = .categories
         ensureSelection()
         persistChanges()
     }

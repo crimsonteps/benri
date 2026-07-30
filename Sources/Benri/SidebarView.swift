@@ -19,7 +19,7 @@ struct SidebarView: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(spacing: 4) {
+                    VStack(spacing: BenriTheme.Spacing.xxs) {
                         SidebarRow(
                             title: "全部",
                             icon: "square.stack.3d.up.fill",
@@ -59,7 +59,7 @@ struct SidebarView: View {
                             .id(ScrollTarget.category(category.id))
                         }
                     }
-                    .padding(.horizontal, 7)
+                    .padding(.horizontal, BenriTheme.Spacing.md)
                 }
                 .onChange(of: store.selectedCategoryID) { selectedCategoryID in
                     let target = selectedCategoryID.map(ScrollTarget.category) ?? .all
@@ -84,7 +84,7 @@ struct SidebarView: View {
                     settingsButton
                 }
             } else {
-                VStack(spacing: 2) {
+                VStack(spacing: BenriTheme.Spacing.sm) {
                     newCategoryButton
                     settingsButton
                 }
@@ -93,22 +93,30 @@ struct SidebarView: View {
         .font(.system(size: 12, weight: .medium))
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
-        .padding(7)
+        .padding(BenriTheme.Spacing.md)
     }
 
     private var newCategoryButton: some View {
         Button(action: store.beginNewCategory) {
             Image(systemName: "plus")
-                .frame(width: 28, height: 30)
+                .frame(
+                    width: BenriTheme.Size.floatingButton,
+                    height: BenriTheme.Size.floatingButton
+                )
         }
+        .benriFloatingCircleButton()
         .help("新建分类")
     }
 
     private var settingsButton: some View {
         Button(action: openSettings) {
             Image(systemName: "gearshape")
-                .frame(width: 28, height: 30)
+                .frame(
+                    width: BenriTheme.Size.floatingButton,
+                    height: BenriTheme.Size.floatingButton
+                )
         }
+        .benriFloatingCircleButton()
         .help("设置 ⌘,")
     }
 
@@ -116,11 +124,11 @@ struct SidebarView: View {
         Image(nsImage: NSApp.applicationIconImage)
             .resizable()
             .interpolation(.high)
-            .frame(width: 28, height: 28)
+            .frame(width: 26, height: 26)
             .accessibilityHidden(true)
             .frame(maxWidth: .infinity)
-            .padding(.top, 15)
-            .padding(.bottom, 14)
+            .padding(.top, 14)
+            .padding(.bottom, 13)
     }
 }
 
@@ -135,12 +143,13 @@ private struct SidebarRow: View {
     let action: () -> Void
 
     @State private var isHovering = false
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(isSelected ? .primary : .secondary)
                     .frame(width: 18)
 
@@ -153,13 +162,16 @@ private struct SidebarRow: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+            .font(.system(size: 13, weight: isSelected ? .medium : .regular))
             .frame(maxWidth: .infinity, alignment: isExpanded ? .leading : .center)
             .padding(.horizontal, isExpanded ? 9 : 0)
-            .frame(height: 36)
+            .frame(height: 38)
             .contentShape(Rectangle())
             .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(
+                    cornerRadius: BenriTheme.Radius.row,
+                    style: .continuous
+                )
                     .fill(rowBackground)
             }
         }
@@ -177,8 +189,13 @@ private struct SidebarRow: View {
 
     private var rowBackground: Color {
         if isSelected {
-            return Color.accentColor.opacity(isKeyboardActive ? 0.16 : 0.1)
+            return BenriTheme.Colors.selection(
+                for: colorScheme,
+                active: isKeyboardActive
+            )
         }
-        return isHovering ? Color.primary.opacity(0.045) : Color.clear
+        return isHovering
+            ? BenriTheme.Colors.rowHover(for: colorScheme)
+            : Color.clear
     }
 }

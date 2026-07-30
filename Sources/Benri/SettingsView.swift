@@ -6,15 +6,7 @@ struct SettingsView: View {
     let selectHotKey: (GlobalHotKey) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            VStack(alignment: .leading, spacing: 5) {
-                Label("设置", systemImage: "gearshape")
-                    .font(.system(size: 18, weight: .semibold))
-                Text("调整 Benri 的外观和唤起方式")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-
+        VStack(alignment: .leading) {
             Form {
                 Section("外观") {
                     Picker("主题", selection: $settings.appearanceMode) {

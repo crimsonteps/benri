@@ -19,7 +19,7 @@ struct InlineContentTextEditor: NSViewRepresentable {
         let textView = RecordContentTextView()
         textView.delegate = context.coordinator
         textView.string = text
-        textView.font = .systemFont(ofSize: 14.5)
+        textView.font = .monospacedSystemFont(ofSize: 13.5, weight: .regular)
         textView.textColor = .labelColor
         textView.drawsBackground = false
         textView.isRichText = false

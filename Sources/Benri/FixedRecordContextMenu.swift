@@ -1,13 +1,35 @@
 import AppKit
 import SwiftUI
 
+@MainActor
+final class RecordContextMenuAnchor {
+    private(set) weak var selectedView: NSView?
+
+    func update(view: NSView, isSelected: Bool) {
+        if isSelected {
+            selectedView = view
+        } else if selectedView === view {
+            selectedView = nil
+        }
+    }
+
+    func remove(view: NSView) {
+        if selectedView === view {
+            selectedView = nil
+        }
+    }
+}
+
 struct FixedRecordContextMenu: NSViewRepresentable {
+    let anchor: RecordContextMenuAnchor
+    let isSelected: Bool
     let prepare: () -> Void
     let editAction: () -> Void
     let deleteAction: () -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
+            anchor: anchor,
             prepare: prepare,
             editAction: editAction,
             deleteAction: deleteAction
@@ -19,25 +41,34 @@ struct FixedRecordContextMenu: NSViewRepresentable {
         view.onRightClick = { [weak coordinator = context.coordinator] sourceView in
             coordinator?.presentMenu(from: sourceView)
         }
+        anchor.update(view: view, isSelected: isSelected)
         return view
     }
 
     func updateNSView(_ nsView: RightClickCaptureView, context: Context) {
+        anchor.update(view: nsView, isSelected: isSelected)
         context.coordinator.prepare = prepare
         context.coordinator.editAction = editAction
         context.coordinator.deleteAction = deleteAction
     }
 
+    static func dismantleNSView(_ nsView: RightClickCaptureView, coordinator: Coordinator) {
+        coordinator.anchor.remove(view: nsView)
+    }
+
     final class Coordinator: NSObject {
+        let anchor: RecordContextMenuAnchor
         var prepare: () -> Void
         var editAction: () -> Void
         var deleteAction: () -> Void
 
         init(
+            anchor: RecordContextMenuAnchor,
             prepare: @escaping () -> Void,
             editAction: @escaping () -> Void,
             deleteAction: @escaping () -> Void
         ) {
+            self.anchor = anchor
             self.prepare = prepare
             self.editAction = editAction
             self.deleteAction = deleteAction

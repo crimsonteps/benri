@@ -13,8 +13,8 @@ private let pasteLogger = Logger(
 extension Notification.Name {
     static let benriFocusSearch = Notification.Name("Benri.FocusSearch")
     static let benriClearSearchFocus = Notification.Name("Benri.ClearSearchFocus")
-    static let benriSaveRecordEditor = Notification.Name("Benri.SaveRecordEditor")
-    static let benriCancelRecordEditor = Notification.Name("Benri.CancelRecordEditor")
+    static let benriSaveActiveEditor = Notification.Name("Benri.SaveActiveEditor")
+    static let benriCancelActiveEditor = Notification.Name("Benri.CancelActiveEditor")
 }
 
 final class BenriPanel: NSPanel {
@@ -35,6 +35,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var pasteTask: Task<Void, Never>?
     private var pasteTransactionID: UInt64 = 0
     private var cancellables = Set<AnyCancellable>()
+    private let recordContextMenuAnchor = RecordContextMenuAnchor()
 
     init(
         store: VaultViewModel,
@@ -51,8 +52,6 @@ final class PanelController: NSObject, NSWindowDelegate {
             ),
             styleMask: [
                 .titled,
-                .closable,
-                .miniaturizable,
                 .fullSizeContentView,
                 .nonactivatingPanel
             ],
@@ -81,19 +80,19 @@ final class PanelController: NSObject, NSWindowDelegate {
             width: VaultLayout.collapsedWindowWidth,
             height: VaultLayout.windowHeight
         )
-        panel.standardWindowButton(.closeButton)?.isHidden = true
-        panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        panel.standardWindowButton(.zoomButton)?.isHidden = true
-
         let rootView = VaultPanelView(
             store: store,
             settings: settings,
+            recordContextMenuAnchor: recordContextMenuAnchor,
             openSettings: openSettings,
             onClose: { [weak self] in
                 self?.hide(restoringPreviousApplication: true)
             },
             onPasteRecord: { [weak self] recordID in
                 self?.copyRecordAndPaste(recordID)
+            },
+            onShowActions: { [weak self] in
+                self?.showKeyboardActionMenu()
             },
             onEditorDismissed: { [weak self] in self?.editorDidDismiss() }
         )
@@ -113,102 +112,129 @@ final class PanelController: NSObject, NSWindowDelegate {
             .store(in: &cancellables)
 
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self,
-                  self.panel.isKeyWindow || self.panel.attachedSheet?.isKeyWindow == true,
-                  self.store.alert == nil
-            else { return event }
+            self?.handleKeyDown(event) ?? event
+        }
+    }
 
-            if self.handleRecordEditorShortcut(event) {
-                return nil
-            }
-            guard self.panel.attachedSheet == nil else { return event }
+    private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
+        guard panel.isKeyWindow || panel.attachedSheet?.isKeyWindow == true,
+              store.alert == nil
+        else { return event }
 
-            if self.store.isEditingRecordName, self.store.keyboardPane == .value {
-                return event
-            }
+        // Let an input method finish or navigate its marked text before Benri
+        // interprets Return, Escape, or arrow keys as application commands.
+        if activeTextView?.hasMarkedText() == true {
+            return event
+        }
 
-            if let textView = self.panel.firstResponder as? NSTextView,
-               !textView.isFieldEditor,
-               self.store.keyboardPane == .value {
-                return event
-            }
+        if handleActiveEditorShortcut(event) {
+            return nil
+        }
+        guard panel.attachedSheet == nil else { return event }
 
-            let modifiers = event.modifierFlags
-            guard modifiers.intersection([.option, .control, .shift]).isEmpty else {
-                return event
-            }
-            let usesCommand = modifiers.contains(.command)
+        let modifiers = shortcutModifiers(for: event)
+        let keyCode = Int(event.keyCode)
 
-            switch Int(event.keyCode) {
+        if modifiers == [.command] {
+            switch keyCode {
             case kVK_ANSI_F:
-                guard usesCommand else { return event }
-                self.store.closeRecordPanel()
-                self.store.keyboardPane = .records
-                NotificationCenter.default.post(name: .benriFocusSearch, object: nil)
+                focusSearchFromKeyboard()
                 return nil
-            case kVK_UpArrow:
-                guard !usesCommand else { return event }
-                switch self.store.keyboardPane {
-                case .categories:
-                    self.store.moveCategorySelection(-1)
-                case .records:
-                    self.panel.makeFirstResponder(nil)
-                    self.store.moveSelection(-1)
-                case .value:
-                    return event
-                }
+            case kVK_ANSI_E:
+                guard !preservesNativeTextEditingCommands else { return event }
+                return editKeyboardSelection() ? nil : event
+            case kVK_Delete, kVK_ForwardDelete:
+                guard !preservesNativeTextEditingCommands else { return event }
+                return deleteKeyboardSelection() ? nil : event
+            case kVK_ANSI_C:
+                guard !shouldUseNativeCopy else { return event }
+                guard store.keyboardPane != .categories,
+                      store.copySelectedRecord()
+                else { return event }
                 return nil
-            case kVK_DownArrow:
-                guard !usesCommand else { return event }
-                switch self.store.keyboardPane {
-                case .categories:
-                    self.store.moveCategorySelection(1)
-                case .records:
-                    self.panel.makeFirstResponder(nil)
-                    self.store.moveSelection(1)
-                case .value:
-                    return event
-                }
-                return nil
-            case kVK_LeftArrow:
-                if self.store.recordPanelMode == .preview {
-                    self.store.closeRecordPanel()
-                    return nil
-                }
-                if self.store.recordPanelMode == .edit {
-                    return event
-                }
-                if usesCommand || self.store.searchText.isEmpty {
-                    self.store.moveKeyboardPaneLeft()
-                    return nil
-                }
-                return event
-            case kVK_RightArrow:
-                if self.store.recordPanelMode == .edit {
-                    return event
-                }
-                if self.store.keyboardPane == .records {
-                    self.panel.makeFirstResponder(nil)
-                    self.store.showSelectedRecordPreview()
-                    return nil
-                }
-                if usesCommand || self.store.searchText.isEmpty {
-                    self.store.moveKeyboardPaneRight()
-                    return nil
-                }
-                return event
-            case kVK_Return, kVK_ANSI_KeypadEnter:
-                if usesCommand {
-                    return event
-                }
-                if self.store.keyboardPane != .categories,
-                   self.copyRecordAndPaste() {
-                    return nil
-                }
-                return event
+            case kVK_ANSI_S, kVK_Return, kVK_ANSI_KeypadEnter:
+                return finishInlineRecordEditing() ? nil : event
             default:
+                break
+            }
+        }
+
+        if modifiers == [.control],
+           keyCode == kVK_Return || keyCode == kVK_ANSI_KeypadEnter {
+            return showKeyboardActionMenu() ? nil : event
+        }
+
+        if modifiers == [.shift], keyCode == kVK_F10 {
+            return showKeyboardActionMenu() ? nil : event
+        }
+
+        if modifiers.isEmpty, keyCode == kVK_Escape {
+            if store.recordPanelMode == .edit {
+                return finishInlineRecordEditing() ? nil : event
+            }
+            if store.recordPanelMode == .preview {
+                store.closeRecordPanel()
+                restorePanelResponder()
+                return nil
+            }
+            if store.isSearchFocused {
+                NotificationCenter.default.post(name: .benriClearSearchFocus, object: nil)
+                store.setSearchFocused(false)
+                restorePanelResponder()
+                return nil
+            }
+            hide(restoringPreviousApplication: true)
+            return nil
+        }
+
+        // Inline record editing owns all ordinary text-navigation and editing
+        // keys, even during a brief first-responder transition.
+        guard store.recordPanelMode != .edit else { return event }
+
+        // Search uses the field editor, including arrows and Return for IME and
+        // native text behavior. Escape and explicit app commands were handled above.
+        guard !store.isSearchFocused else { return event }
+        guard modifiers.isEmpty else { return event }
+
+        switch keyCode {
+        case kVK_UpArrow:
+            switch store.keyboardPane {
+            case .categories:
+                store.moveCategorySelection(-1)
+            case .records:
+                panel.makeFirstResponder(nil)
+                store.moveSelection(-1)
+            case .value:
                 return event
             }
+            return nil
+        case kVK_DownArrow:
+            switch store.keyboardPane {
+            case .categories:
+                store.moveCategorySelection(1)
+            case .records:
+                panel.makeFirstResponder(nil)
+                store.moveSelection(1)
+            case .value:
+                return event
+            }
+            return nil
+        case kVK_LeftArrow:
+            store.moveKeyboardPaneLeft()
+            restorePanelResponder()
+            return nil
+        case kVK_RightArrow:
+            panel.makeFirstResponder(nil)
+            store.moveKeyboardPaneRight()
+            return nil
+        case kVK_Return, kVK_ANSI_KeypadEnter:
+            if store.keyboardPane != .categories,
+               copyRecordAndPaste() {
+                return nil
+            }
+            return event
+        default:
+            return event
         }
     }
 
@@ -228,23 +254,68 @@ final class PanelController: NSObject, NSWindowDelegate {
         return true
     }
 
-    private func handleRecordEditorShortcut(_ event: NSEvent) -> Bool {
+    private func handleActiveEditorShortcut(_ event: NSEvent) -> Bool {
         guard panel.attachedSheet?.isKeyWindow == true else { return false }
 
-        let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        let hasActiveEditor = store.recordEditor != nil || store.categoryEditor != nil
+        guard hasActiveEditor else { return false }
+
+        let modifiers = shortcutModifiers(for: event)
         if event.keyCode == kVK_Escape, modifiers.isEmpty {
-            guard store.recordEditor != nil else { return false }
-            NotificationCenter.default.post(name: .benriCancelRecordEditor, object: nil)
+            NotificationCenter.default.post(name: .benriCancelActiveEditor, object: nil)
             return true
         }
 
-        guard store.recordEditor != nil, modifiers == [.command] else { return false }
+        guard modifiers == [.command] else { return false }
         switch Int(event.keyCode) {
         case kVK_ANSI_S, kVK_Return, kVK_ANSI_KeypadEnter:
-            NotificationCenter.default.post(name: .benriSaveRecordEditor, object: nil)
+            NotificationCenter.default.post(name: .benriSaveActiveEditor, object: nil)
             return true
         default:
             return false
+        }
+    }
+
+    private func shortcutModifiers(for event: NSEvent) -> NSEvent.ModifierFlags {
+        event.modifierFlags.intersection([.command, .option, .control, .shift])
+    }
+
+    private var activeTextView: NSTextView? {
+        if let textView = panel.attachedSheet?.firstResponder as? NSTextView {
+            return textView
+        }
+        return panel.firstResponder as? NSTextView
+    }
+
+    private var preservesNativeTextEditingCommands: Bool {
+        panel.attachedSheet != nil
+            || store.recordPanelMode == .edit
+            || store.isSearchFocused
+            || activeTextView?.isEditable == true
+    }
+
+    private var shouldUseNativeCopy: Bool {
+        if preservesNativeTextEditingCommands {
+            return true
+        }
+        guard let textView = activeTextView else { return false }
+        let selectedRange = textView.selectedRange()
+        return selectedRange.location != NSNotFound && selectedRange.length > 0
+    }
+
+    @discardableResult
+    private func finishInlineRecordEditing() -> Bool {
+        guard store.recordPanelMode == .edit else { return false }
+        panel.makeFirstResponder(nil)
+        guard store.finishInlineRecordEditing() else { return false }
+        restorePanelResponder()
+        return true
+    }
+
+    private func restorePanelResponder() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.panel.isKeyWindow else { return }
+            self.panel.makeFirstResponder(self.panel)
         }
     }
 
@@ -257,6 +328,147 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     var isVisible: Bool {
         panel.isVisible
+    }
+
+    var canShowKeyboardActionMenu: Bool {
+        canUseKeyboardSelectionActions && store.keyboardActionTarget != nil
+    }
+
+    var canPresentEditorFromKeyboard: Bool {
+        panel.attachedSheet == nil && store.alert == nil && store.canModifyVault
+    }
+
+    var canFocusSearchFromKeyboard: Bool {
+        panel.attachedSheet == nil && store.alert == nil
+    }
+
+    var canEditKeyboardSelection: Bool {
+        canUseKeyboardSelectionActions && store.canEditKeyboardSelection
+    }
+
+    var canDeleteKeyboardSelection: Bool {
+        canUseKeyboardSelectionActions && store.canDeleteKeyboardSelection
+    }
+
+    private var canUseKeyboardSelectionActions: Bool {
+        panel.isVisible
+            && panel.attachedSheet == nil
+            && store.alert == nil
+            && store.recordPanelMode != .edit
+            && !store.isSearchFocused
+            && activeTextView?.isEditable != true
+    }
+
+    func focusSearchFromKeyboard() {
+        guard canFocusSearchFromKeyboard else { return }
+        show()
+        store.closeRecordPanel()
+        store.activateRecordNavigation()
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.panel.isVisible, self.panel.attachedSheet == nil else { return }
+            NotificationCenter.default.post(name: .benriFocusSearch, object: nil)
+        }
+    }
+
+    @discardableResult
+    func showKeyboardActionMenu() -> Bool {
+        guard canShowKeyboardActionMenu,
+              let target = store.keyboardActionTarget,
+              let contentView = panel.contentView
+        else { return false }
+
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+
+        switch target {
+        case .category:
+            let editItem = NSMenuItem(
+                title: "编辑分类",
+                action: #selector(editFromKeyboardActionMenu(_:)),
+                keyEquivalent: ""
+            )
+            editItem.target = self
+            editItem.isEnabled = store.canEditKeyboardSelection
+            menu.addItem(editItem)
+
+            let deleteItem = NSMenuItem(
+                title: "删除分类",
+                action: #selector(deleteFromKeyboardActionMenu(_:)),
+                keyEquivalent: ""
+            )
+            deleteItem.target = self
+            deleteItem.isEnabled = store.canDeleteKeyboardSelection
+            menu.addItem(deleteItem)
+        case .record:
+            let editItem = NSMenuItem(
+                title: "编辑",
+                action: #selector(editFromKeyboardActionMenu(_:)),
+                keyEquivalent: ""
+            )
+            editItem.target = self
+            editItem.isEnabled = store.canEditKeyboardSelection
+            menu.addItem(editItem)
+
+            let deleteItem = NSMenuItem(
+                title: "删除",
+                action: #selector(deleteFromKeyboardActionMenu(_:)),
+                keyEquivalent: ""
+            )
+            deleteItem.target = self
+            deleteItem.isEnabled = store.canDeleteKeyboardSelection
+            menu.addItem(deleteItem)
+        }
+
+        if case .record = target,
+           let anchorView = recordContextMenuAnchor.selectedView,
+           anchorView.window === panel {
+            menu.popUp(
+                positioning: nil,
+                at: NSPoint(x: anchorView.bounds.maxX - 6, y: anchorView.bounds.midY),
+                in: anchorView
+            )
+            return true
+        }
+
+        let anchorX: CGFloat
+        switch target {
+        case .category:
+            anchorX = VaultLayout.windowInset + VaultLayout.categoryWidth - 4
+        case .record:
+            anchorX = VaultLayout.collapsedWindowWidth - VaultLayout.windowInset - 6
+        }
+        let anchorY = contentView.isFlipped
+            ? contentView.bounds.maxY - VaultLayout.windowInset - 48
+            : VaultLayout.windowInset + 48
+
+        menu.popUp(
+            positioning: nil,
+            at: NSPoint(x: anchorX, y: anchorY),
+            in: contentView
+        )
+        return true
+    }
+
+    @discardableResult
+    func editKeyboardSelection() -> Bool {
+        guard canEditKeyboardSelection else { return false }
+        panel.makeFirstResponder(nil)
+        return store.beginEditingKeyboardSelection()
+    }
+
+    @discardableResult
+    func deleteKeyboardSelection() -> Bool {
+        guard canDeleteKeyboardSelection else { return false }
+        panel.makeFirstResponder(nil)
+        return store.requestDeleteKeyboardSelection()
+    }
+
+    @objc private func editFromKeyboardActionMenu(_ sender: Any?) {
+        editKeyboardSelection()
+    }
+
+    @objc private func deleteFromKeyboardActionMenu(_ sender: Any?) {
+        deleteKeyboardSelection()
     }
 
     func toggle() {
@@ -292,7 +504,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
 
         positionPanel()
-        store.keyboardPane = .records
+        store.activateRecordNavigation()
         if panel.isMiniaturized {
             panel.deminiaturize(nil)
         }
