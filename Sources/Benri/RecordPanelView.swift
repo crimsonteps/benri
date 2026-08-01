@@ -27,7 +27,9 @@ struct RecordPanelView: View {
                 InlineRecordNameEditor(store: store, record: record)
                     .id(record.id)
 
-                Spacer(minLength: 12)
+                Spacer(minLength: 8)
+
+                InlineRecordCategoryEditor(store: store, record: record)
 
                 Button {
                     store.copy(record.content)
@@ -50,6 +52,37 @@ struct RecordPanelView: View {
                 .id(record.id)
                 .padding([.horizontal, .bottom], BenriTheme.Spacing.md)
         }
+    }
+}
+
+private struct InlineRecordCategoryEditor: View {
+    @ObservedObject var store: VaultViewModel
+    let record: VaultRecord
+
+    var body: some View {
+        Picker("分类", selection: categorySelection) {
+            ForEach(store.sortedCategories) { category in
+                Label(
+                    category.name,
+                    systemImage: CategoryIconCatalog.iconName(for: category)
+                )
+                .tag(category.id)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .controlSize(.small)
+        .frame(width: 118)
+        .help("更改分类")
+    }
+
+    private var categorySelection: Binding<UUID> {
+        Binding(
+            get: { record.categoryID },
+            set: { categoryID in
+                store.updateRecordCategory(id: record.id, categoryID: categoryID)
+            }
+        )
     }
 }
 

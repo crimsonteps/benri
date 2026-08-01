@@ -1,4 +1,3 @@
-import AppKit
 import Foundation
 import BenriCore
 import SwiftUI
@@ -15,7 +14,9 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header
+            Color.clear
+                .frame(height: BenriTheme.Size.searchHeaderHeight)
+                .accessibilityHidden(true)
 
             ScrollViewReader { proxy in
                 ScrollView {
@@ -120,16 +121,6 @@ struct SidebarView: View {
         .help("设置 ⌘,")
     }
 
-    private var header: some View {
-        Image(nsImage: NSApp.applicationIconImage)
-            .resizable()
-            .interpolation(.high)
-            .frame(width: 26, height: 26)
-            .accessibilityHidden(true)
-            .frame(maxWidth: .infinity)
-            .padding(.top, 14)
-            .padding(.bottom, 13)
-    }
 }
 
 private struct SidebarRow: View {

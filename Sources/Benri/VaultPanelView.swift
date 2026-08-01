@@ -29,7 +29,6 @@ struct VaultPanelView: View {
     let openSettings: () -> Void
     let onClose: () -> Void
     let onPasteRecord: (UUID) -> Void
-    let onShowActions: () -> Void
     let onEditorDismissed: () -> Void
 
     private let sidebarExpanded = false
@@ -94,8 +93,7 @@ struct VaultPanelView: View {
                 RecordListView(
                     store: store,
                     contextMenuAnchor: recordContextMenuAnchor,
-                    onPasteRecord: onPasteRecord,
-                    onShowActions: onShowActions
+                    onPasteRecord: onPasteRecord
                 )
                     .frame(width: VaultLayout.recordListWidth)
             }

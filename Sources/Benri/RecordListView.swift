@@ -7,7 +7,6 @@ struct RecordListView: View {
     @ObservedObject var store: VaultViewModel
     let contextMenuAnchor: RecordContextMenuAnchor
     let onPasteRecord: (UUID) -> Void
-    let onShowActions: () -> Void
     @FocusState private var searchIsFocused: Bool
     @State private var scrollContentFrame = CGRect.null
     @State private var scrollViewportHeight: CGFloat = 0
@@ -25,7 +24,7 @@ struct RecordListView: View {
                 }
             } else {
                 ScrollViewReader { proxy in
-                    ScrollView {
+                    ScrollView(.vertical, showsIndicators: false) {
                         LazyVStack(spacing: 2) {
                             ForEach(store.filteredRecords) { record in
                                 RecordRow(
@@ -101,7 +100,6 @@ struct RecordListView: View {
                 }
             }
 
-            actionFooter
         }
         .background(Color.clear)
         .onReceive(NotificationCenter.default.publisher(for: .benriFocusSearch)) { _ in
@@ -174,46 +172,6 @@ struct RecordListView: View {
         .padding(.horizontal, BenriTheme.Spacing.xl)
     }
 
-    @ViewBuilder
-    private var actionFooter: some View {
-        if let record = store.selectedRecord,
-           store.recordPanelMode != .edit {
-            HStack {
-                Spacer(minLength: 0)
-
-                HStack(spacing: BenriTheme.Spacing.xl) {
-                    Button {
-                        onPasteRecord(record.id)
-                    } label: {
-                        HStack(spacing: BenriTheme.Spacing.sm) {
-                            Text("粘贴")
-                            BenriKeyCap(text: "↵")
-                        }
-                    }
-                    .disabled(record.content.isEmpty)
-
-                    Button {
-                        store.activateRecordNavigation()
-                        onShowActions()
-                    } label: {
-                        HStack(spacing: BenriTheme.Spacing.sm) {
-                            Text("操作")
-                            BenriKeyCap(text: "⌃↵")
-                        }
-                    }
-                }
-                .font(BenriTheme.Typography.footer)
-                .buttonStyle(.plain)
-                .padding(.horizontal, BenriTheme.Spacing.xl)
-                .frame(height: 36)
-                .benriFloatingSurface(in: Capsule())
-            }
-            .padding(.horizontal, BenriTheme.Spacing.md)
-            .frame(height: BenriTheme.Size.footerHeight)
-        } else {
-            Color.clear.frame(height: BenriTheme.Size.footerHeight)
-        }
-    }
 }
 
 private struct RecordListContentFramePreferenceKey: PreferenceKey {

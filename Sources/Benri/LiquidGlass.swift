@@ -100,6 +100,17 @@ private struct BenriFloatingSurfaceModifier<S: Shape>: ViewModifier {
     }
 }
 
+private struct BenriFloatingCircleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .frame(
+                width: BenriTheme.Size.floatingButton,
+                height: BenriTheme.Size.floatingButton
+            )
+            .contentShape(Circle())
+    }
+}
+
 private struct BenriGlassModifier: ViewModifier {
     let cornerRadius: CGFloat
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -154,8 +165,7 @@ extension View {
 
     func benriFloatingCircleButton() -> some View {
         self
-            .buttonStyle(.plain)
-            .contentShape(Circle())
+            .buttonStyle(BenriFloatingCircleButtonStyle())
             .modifier(BenriFloatingSurfaceModifier(shape: Circle()))
     }
 

@@ -91,9 +91,6 @@ final class PanelController: NSObject, NSWindowDelegate {
             onPasteRecord: { [weak self] recordID in
                 self?.copyRecordAndPaste(recordID)
             },
-            onShowActions: { [weak self] in
-                self?.showKeyboardActionMenu()
-            },
             onEditorDismissed: { [weak self] in self?.editorDidDismiss() }
         )
         let hostingView = NSHostingView(rootView: rootView)

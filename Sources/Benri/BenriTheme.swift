@@ -17,14 +17,11 @@ enum BenriTheme {
         static let row: CGFloat = 10
         static let card: CGFloat = 12
         static let floatingControl: CGFloat = 16
-        static let keyCap: CGFloat = 6
     }
 
     enum Size {
         static let searchHeaderHeight: CGFloat = 54
-        static let footerHeight: CGFloat = 50
         static let rowIcon: CGFloat = 26
-        static let keyCap: CGFloat = 18
         static let floatingButton: CGFloat = 36
     }
 
@@ -32,8 +29,6 @@ enum BenriTheme {
         static let search = Font.system(size: 18, weight: .regular)
         static let rowTitle = Font.body.weight(.medium)
         static let rowDetail = Font.caption
-        static let footer = Font.callout.weight(.medium)
-        static let keyCap = Font.caption
         static let preview = Font.system(.subheadline, design: .monospaced)
     }
 
@@ -53,10 +48,6 @@ enum BenriTheme {
             scheme == .dark ? Color.white.opacity(0.055) : Color.black.opacity(0.04)
         }
 
-        static func controlSurface(for scheme: ColorScheme) -> Color {
-            scheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.06)
-        }
-
         static func border(for scheme: ColorScheme) -> Color {
             scheme == .dark ? Color.white.opacity(0.14) : Color.black.opacity(0.10)
         }
@@ -68,29 +59,5 @@ enum BenriTheme {
         static func cardFill(for scheme: ColorScheme) -> Color {
             scheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.035)
         }
-    }
-}
-
-struct BenriKeyCap: View {
-    let text: String
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        Text(text)
-            .font(BenriTheme.Typography.keyCap)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, BenriTheme.Spacing.xs)
-            .frame(
-                minWidth: BenriTheme.Size.keyCap,
-                minHeight: BenriTheme.Size.keyCap
-            )
-            .background {
-                RoundedRectangle(
-                    cornerRadius: BenriTheme.Radius.keyCap,
-                    style: .continuous
-                )
-                .fill(BenriTheme.Colors.controlSurface(for: colorScheme))
-            }
     }
 }

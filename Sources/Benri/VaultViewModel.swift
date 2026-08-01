@@ -503,6 +503,22 @@ final class VaultViewModel: ObservableObject {
         scheduleRecordSave()
     }
 
+    func updateRecordCategory(id: UUID, categoryID: UUID) {
+        guard canModifyVault,
+              payload.categories.contains(where: { $0.id == categoryID }),
+              let index = payload.records.firstIndex(where: { $0.id == id }),
+              payload.records[index].categoryID != categoryID
+        else { return }
+
+        payload.records[index].categoryID = categoryID
+        payload.records[index].updatedAt = Date()
+
+        if selectedCategoryID != nil {
+            selectedCategoryID = categoryID
+        }
+        scheduleRecordSave()
+    }
+
     func flushPendingRecordSave() {
         recordSaveWorkItem?.cancel()
         recordSaveWorkItem = nil
