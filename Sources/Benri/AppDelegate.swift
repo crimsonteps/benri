@@ -18,7 +18,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var clipboardManager: ClipboardManager!
     private var statusItem: NSStatusItem?
     private var settingsWindowController: SettingsWindowController!
+    private var commonTextStatusMenuItem: NSMenuItem?
+    private var clipboardStatusMenuItem: NSMenuItem?
+    private var clipboardCaptureMenuItem: NSMenuItem?
     private var hotKeyFailureItem: NSMenuItem?
+    private var activeCommonTextHotKey: GlobalHotKey?
+    private var activeClipboardHotKey: GlobalHotKey?
     private var cancellables = Set<AnyCancellable>()
     private lazy var vaultMaintenanceController = VaultMaintenanceController(store: store)
 
@@ -183,8 +188,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             },
             clearClipboardHistory: { [weak self] in self?.clipboardStore.clearAll() }
         )
-        observeMenuBarIconVisibility()
-
         hotKeyManager = HotKeyManager(actions: [
             .commonText: { [weak self] in
                 self?.paletteState.showCommonText()
@@ -197,12 +200,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         ])
 
         registerSavedHotKey()
+        observeMenuBarIconVisibility()
         clipboardStore.maxAge = settings.clipboardRetention.maxAge
         clipboardStore.enforceLimits()
         clipboardManager.updateMonitoring()
         settings.$clipboardHistoryEnabled
             .combineLatest(settings.$hasConfirmedClipboardHistory)
-            .sink { [weak self] _, _ in self?.clipboardManager.updateMonitoring() }
+            .sink { [weak self] _, _ in
+                self?.clipboardManager.updateMonitoring()
+                self?.updateClipboardCaptureMenuItem()
+            }
             .store(in: &cancellables)
         settings.$clipboardRetention
             .removeDuplicates()
@@ -245,12 +252,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return true
     }
 
-    @objc private func openPanel() {
+    @objc private func openCommonText() {
+        paletteState.showCommonText()
+        panelController.show()
+    }
+
+    @objc private func openClipboard() {
+        paletteState.showClipboard()
         panelController.show()
     }
 
     @objc private func newRecord() {
+        paletteState.showCommonText()
         panelController.showNewRecord()
+    }
+
+    @objc private func toggleClipboardCapture() {
+        if settings.clipboardHistoryEnabled {
+            settings.clipboardHistoryEnabled = false
+        } else if settings.hasConfirmedClipboardHistory {
+            settings.clipboardHistoryEnabled = true
+        } else {
+            paletteState.showClipboard()
+            paletteState.confirmation = .enableClipboard
+            panelController.show()
+        }
     }
 
     @objc private func focusSearchFromKeyboard() {
@@ -333,42 +359,134 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             button.toolTip = "Benri"
         }
 
-        let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "打开 Benri", action: #selector(openPanel), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "新建记录", action: #selector(newRecord), keyEquivalent: "n"))
-        menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "备份保险库…", action: #selector(backupVault), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "恢复保险库…", action: #selector(restoreVault), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "导出诊断信息…", action: #selector(exportDiagnostics), keyEquivalent: ""))
+        let menu = NSMenu(title: "Benri")
+
+        let commonTextItem = statusMenuItem(
+            title: "常用文本",
+            systemImage: "text.quote",
+            action: #selector(openCommonText)
+        )
+        configureShortcut(
+            commonTextItem,
+            hotKey: activeCommonTextHotKey
+        )
+        commonTextStatusMenuItem = commonTextItem
+        menu.addItem(commonTextItem)
+
+        let clipboardItem = statusMenuItem(
+            title: "剪贴板",
+            systemImage: "doc.on.clipboard",
+            action: #selector(openClipboard)
+        )
+        configureShortcut(
+            clipboardItem,
+            hotKey: activeClipboardHotKey
+        )
+        clipboardStatusMenuItem = clipboardItem
+        menu.addItem(clipboardItem)
+
+        menu.addItem(
+            statusMenuItem(
+                title: "新建常用文本…",
+                systemImage: "plus",
+                action: #selector(newRecord),
+                keyEquivalent: "n"
+            )
+        )
 
         let failureItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        failureItem.image = NSImage(
+            systemSymbolName: "exclamationmark.triangle.fill",
+            accessibilityDescription: "快捷键冲突"
+        )
         failureItem.isEnabled = false
         failureItem.isHidden = true
         menu.addItem(failureItem)
         hotKeyFailureItem = failureItem
 
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "检查更新…", action: #selector(checkForUpdates), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "设置…", action: #selector(openSettings), keyEquivalent: ","))
+
+        let captureItem = statusMenuItem(
+            title: "记录剪贴板",
+            systemImage: "record.circle",
+            action: #selector(toggleClipboardCapture)
+        )
+        clipboardCaptureMenuItem = captureItem
+        menu.addItem(captureItem)
+        updateClipboardCaptureMenuItem()
+
+        menu.addItem(
+            statusMenuItem(
+                title: "设置…",
+                systemImage: "gearshape",
+                action: #selector(openSettings),
+                keyEquivalent: ","
+            )
+        )
+
         menu.addItem(.separator())
-        let quitItem = NSMenuItem(
+        let quitItem = statusMenuItem(
             title: "退出 Benri",
+            systemImage: "power",
             action: #selector(quit(_:)),
             keyEquivalent: "q"
         )
-        quitItem.keyEquivalentModifierMask = [.command]
         menu.addItem(quitItem)
 
-        for item in menu.items {
-            item.target = self
-        }
         item.menu = menu
         updateHotKeyToolTip(settings.globalHotKey)
 
-        if let hotKeyError = settings.hotKeyError {
-            failureItem.title = hotKeyError
-            failureItem.isHidden = false
+        updateHotKeyFailureMenuItem()
+    }
+
+    private func statusMenuItem(
+        title: String,
+        systemImage: String,
+        action: Selector?,
+        keyEquivalent: String = ""
+    ) -> NSMenuItem {
+        let item = NSMenuItem(
+            title: title,
+            action: action,
+            keyEquivalent: keyEquivalent
+        )
+        item.target = action == nil ? nil : self
+        item.image = NSImage(
+            systemSymbolName: systemImage,
+            accessibilityDescription: title
+        )
+        return item
+    }
+
+    private func configureShortcut(_ item: NSMenuItem?, hotKey: GlobalHotKey?) {
+        guard let item else { return }
+        guard let hotKey else {
+            item.keyEquivalent = ""
+            item.keyEquivalentModifierMask = []
+            return
         }
+
+        item.keyEquivalent = " "
+        switch hotKey {
+        case .optionSpace:
+            item.keyEquivalentModifierMask = [.option]
+        case .controlSpace:
+            item.keyEquivalentModifierMask = [.control]
+        case .commandOptionSpace:
+            item.keyEquivalentModifierMask = [.command, .option]
+        case .controlOptionSpace:
+            item.keyEquivalentModifierMask = [.control, .option]
+        }
+    }
+
+    private func updateClipboardCaptureMenuItem() {
+        clipboardCaptureMenuItem?.state = settings.clipboardHistoryEnabled ? .on : .off
+    }
+
+    private func updateHotKeyFailureMenuItem() {
+        let messages = [settings.hotKeyError, settings.clipboardHotKeyError].compactMap { $0 }
+        hotKeyFailureItem?.title = messages.joined(separator: " · ")
+        hotKeyFailureItem?.isHidden = messages.isEmpty
     }
 
     private func makeStatusItemImage() -> NSImage {
@@ -451,13 +569,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             NSStatusBar.system.removeStatusItem(statusItem)
         }
         statusItem = nil
+        commonTextStatusMenuItem = nil
+        clipboardStatusMenuItem = nil
+        clipboardCaptureMenuItem = nil
         hotKeyFailureItem = nil
     }
 
     private func registerSavedHotKey() {
         let hotKey = settings.globalHotKey
-        updateHotKeyToolTip(hotKey)
-        if !hotKeyManager.register(hotKey, for: .commonText) {
+        if hotKeyManager.register(hotKey, for: .commonText) {
+            activeCommonTextHotKey = hotKey
+            settings.hotKeyError = nil
+            updateHotKeyToolTip(hotKey)
+        } else {
+            activeCommonTextHotKey = nil
             showHotKeyFailure(hotKey)
         }
         registerSavedClipboardHotKey()
@@ -467,10 +592,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         guard hotKey != settings.globalHotKey else { return }
 
         if hotKeyManager.register(hotKey, for: .commonText) {
+            activeCommonTextHotKey = hotKey
             settings.globalHotKey = hotKey
             settings.hotKeyError = nil
             updateHotKeyToolTip(hotKey)
-            hotKeyFailureItem?.isHidden = true
+            updateHotKeyFailureMenuItem()
         } else {
             showHotKeyFailure(hotKey)
         }
@@ -479,20 +605,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func registerSavedClipboardHotKey() {
         guard let hotKey = settings.clipboardHotKey else {
             hotKeyManager.unregister(.clipboard)
+            activeClipboardHotKey = nil
+            configureShortcut(clipboardStatusMenuItem, hotKey: nil)
+            settings.clipboardHotKeyError = nil
+            updateHotKeyFailureMenuItem()
             return
         }
         if hotKey == settings.globalHotKey
             || !hotKeyManager.register(hotKey, for: .clipboard) {
+            activeClipboardHotKey = nil
             settings.clipboardHotKeyError = "\(hotKey.title) 已被占用"
+            configureShortcut(clipboardStatusMenuItem, hotKey: nil)
         } else {
+            activeClipboardHotKey = hotKey
             settings.clipboardHotKeyError = nil
+            configureShortcut(clipboardStatusMenuItem, hotKey: hotKey)
         }
+        updateHotKeyFailureMenuItem()
     }
 
     private func applyClipboardHotKey(_ hotKey: GlobalHotKey?) {
+        defer {
+            configureShortcut(clipboardStatusMenuItem, hotKey: activeClipboardHotKey)
+            updateHotKeyFailureMenuItem()
+        }
         guard hotKey != settings.clipboardHotKey else { return }
         guard let hotKey else {
             hotKeyManager.unregister(.clipboard)
+            activeClipboardHotKey = nil
             settings.clipboardHotKey = nil
             settings.clipboardHotKeyError = nil
             return
@@ -502,6 +642,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return
         }
         if hotKeyManager.register(hotKey, for: .clipboard) {
+            activeClipboardHotKey = hotKey
             settings.clipboardHotKey = hotKey
             settings.clipboardHotKeyError = nil
         } else {
@@ -511,13 +652,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private func updateHotKeyToolTip(_ hotKey: GlobalHotKey) {
         statusItem?.button?.toolTip = "Benri · \(hotKey.title)"
+        configureShortcut(commonTextStatusMenuItem, hotKey: hotKey)
     }
 
     private func showHotKeyFailure(_ hotKey: GlobalHotKey) {
         let message = "\(hotKey.title) 已被其他应用占用"
         settings.hotKeyError = message
-        hotKeyFailureItem?.title = message
-        hotKeyFailureItem?.isHidden = false
+        updateHotKeyFailureMenuItem()
     }
 
     private func configureMainMenu() {

@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The main panel now uses a fixed dark appearance while Settings follows the system appearance.
 - Removed category controls from the reusable-text workflow; existing vault data remains compatible.
 - Replaced the system Actions menus with a keyboard-navigable in-palette `⌘K` panel and a shared Paste/Actions footer control.
+- Simplified the menu bar menu around direct Common Text and Clipboard entry points, clipboard capture, and Settings.
 
 ### Security
 
