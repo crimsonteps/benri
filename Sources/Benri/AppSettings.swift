@@ -1,4 +1,5 @@
 import AppKit
+import BenriCore
 import SwiftUI
 
 enum AppearanceMode: String, CaseIterable, Identifiable {
@@ -38,6 +39,11 @@ final class AppSettings: ObservableObject {
     private static let appearanceDefaultsKey = "appearanceMode"
     private static let hotKeyDefaultsKey = "globalHotKey"
     private static let menuBarIconDefaultsKey = "showsMenuBarIcon"
+    private static let clipboardEnabledDefaultsKey = "clipboardHistoryEnabled"
+    private static let clipboardConsentDefaultsKey = "clipboardHistoryConsent"
+    private static let clipboardHotKeyDefaultsKey = "clipboardHotKey"
+    private static let clipboardRetentionDefaultsKey = "clipboardRetentionDays"
+    private static let clipboardExcludedAppsDefaultsKey = "clipboardExcludedApps"
 
     @Published var appearanceMode: AppearanceMode {
         didSet {
@@ -64,6 +70,51 @@ final class AppSettings: ObservableObject {
             )
         }
     }
+    @Published var clipboardHistoryEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(
+                clipboardHistoryEnabled,
+                forKey: Self.clipboardEnabledDefaultsKey
+            )
+        }
+    }
+    @Published var hasConfirmedClipboardHistory: Bool {
+        didSet {
+            UserDefaults.standard.set(
+                hasConfirmedClipboardHistory,
+                forKey: Self.clipboardConsentDefaultsKey
+            )
+        }
+    }
+    @Published var clipboardHotKey: GlobalHotKey? {
+        didSet {
+            if let clipboardHotKey {
+                UserDefaults.standard.set(
+                    clipboardHotKey.rawValue,
+                    forKey: Self.clipboardHotKeyDefaultsKey
+                )
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.clipboardHotKeyDefaultsKey)
+            }
+        }
+    }
+    @Published var clipboardRetention: ClipboardRetention {
+        didSet {
+            UserDefaults.standard.set(
+                clipboardRetention.rawValue,
+                forKey: Self.clipboardRetentionDefaultsKey
+            )
+        }
+    }
+    @Published var clipboardExcludedApps: [String] {
+        didSet {
+            UserDefaults.standard.set(
+                clipboardExcludedApps,
+                forKey: Self.clipboardExcludedAppsDefaultsKey
+            )
+        }
+    }
+    @Published var clipboardHotKeyError: String?
 
     init() {
         appearanceMode = UserDefaults.standard
@@ -77,5 +128,22 @@ final class AppSettings: ObservableObject {
         showsMenuBarIcon = UserDefaults.standard.object(forKey: Self.menuBarIconDefaultsKey) == nil
             ? true
             : UserDefaults.standard.bool(forKey: Self.menuBarIconDefaultsKey)
+        clipboardHistoryEnabled = UserDefaults.standard.bool(
+            forKey: Self.clipboardEnabledDefaultsKey
+        )
+        hasConfirmedClipboardHistory = UserDefaults.standard.bool(
+            forKey: Self.clipboardConsentDefaultsKey
+        )
+        clipboardHotKey = UserDefaults.standard
+            .string(forKey: Self.clipboardHotKeyDefaultsKey)
+            .flatMap(GlobalHotKey.init(rawValue:))
+        clipboardRetention = ClipboardRetention(
+            rawValue: UserDefaults.standard.integer(
+                forKey: Self.clipboardRetentionDefaultsKey
+            )
+        ) ?? .threeMonths
+        clipboardExcludedApps = UserDefaults.standard.stringArray(
+            forKey: Self.clipboardExcludedAppsDefaultsKey
+        ) ?? []
     }
 }

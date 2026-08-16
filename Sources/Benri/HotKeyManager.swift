@@ -26,18 +26,22 @@ enum GlobalHotKey: String, CaseIterable {
     }
 }
 
-final class HotKeyManager {
-    private var hotKeyRef: EventHotKeyRef?
-    private var eventHandlerRef: EventHandlerRef?
-    private let action: () -> Void
-    private var nextHotKeyID: UInt32 = 1
+enum HotKeyAction: UInt32 {
+    case commonText = 1
+    case clipboard = 2
+}
 
-    init(action: @escaping () -> Void) {
-        self.action = action
+final class HotKeyManager {
+    private var hotKeyRefs: [HotKeyAction: EventHotKeyRef] = [:]
+    private var eventHandlerRef: EventHandlerRef?
+    private let actions: [HotKeyAction: () -> Void]
+
+    init(actions: [HotKeyAction: () -> Void]) {
+        self.actions = actions
     }
 
     deinit {
-        if let hotKeyRef {
+        for hotKeyRef in hotKeyRefs.values {
             UnregisterEventHotKey(hotKeyRef)
         }
         if let eventHandlerRef {
@@ -45,14 +49,13 @@ final class HotKeyManager {
         }
     }
 
-    func register(_ hotKey: GlobalHotKey) -> Bool {
+    func register(_ hotKey: GlobalHotKey, for action: HotKeyAction) -> Bool {
         guard installEventHandlerIfNeeded() else { return false }
 
         let hotKeyID = EventHotKeyID(
             signature: OSType(0x51564C54),
-            id: nextHotKeyID
+            id: action.rawValue
         )
-        nextHotKeyID += 1
 
         var candidateRef: EventHotKeyRef?
         let registerStatus = RegisterEventHotKey(
@@ -65,11 +68,16 @@ final class HotKeyManager {
         )
         guard registerStatus == noErr, let candidateRef else { return false }
 
-        if let hotKeyRef {
+        if let hotKeyRef = hotKeyRefs[action] {
             UnregisterEventHotKey(hotKeyRef)
         }
-        hotKeyRef = candidateRef
+        hotKeyRefs[action] = candidateRef
         return true
+    }
+
+    func unregister(_ action: HotKeyAction) {
+        guard let hotKeyRef = hotKeyRefs.removeValue(forKey: action) else { return }
+        UnregisterEventHotKey(hotKeyRef)
     }
 
     private func installEventHandlerIfNeeded() -> Bool {
@@ -92,16 +100,30 @@ final class HotKeyManager {
         return handlerStatus == noErr
     }
 
-    fileprivate func invoke() {
-        DispatchQueue.main.async { [action] in
+    fileprivate func invoke(_ hotKeyID: UInt32) {
+        guard let hotKeyAction = HotKeyAction(rawValue: hotKeyID),
+              let action = actions[hotKeyAction]
+        else { return }
+        DispatchQueue.main.async {
             action()
         }
     }
 }
 
-private let benriHotKeyHandler: EventHandlerUPP = { _, _, userData in
-    guard let userData else { return OSStatus(eventNotHandledErr) }
+private let benriHotKeyHandler: EventHandlerUPP = { _, event, userData in
+    guard let event, let userData else { return OSStatus(eventNotHandledErr) }
+    var hotKeyID = EventHotKeyID()
+    let status = GetEventParameter(
+        event,
+        EventParamName(kEventParamDirectObject),
+        EventParamType(typeEventHotKeyID),
+        nil,
+        MemoryLayout<EventHotKeyID>.size,
+        nil,
+        &hotKeyID
+    )
+    guard status == noErr else { return status }
     let manager = Unmanaged<HotKeyManager>.fromOpaque(userData).takeUnretainedValue()
-    manager.invoke()
+    manager.invoke(hotKeyID.id)
     return noErr
 }

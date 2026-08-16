@@ -8,11 +8,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private let settings: AppSettings
     private let store: VaultViewModel
+    private let clipboardStore: ClipboardStore
+    private let paletteState: PaletteState
     private let startupFailureMessage: String?
     private let startupWarningMessage: String?
     private var vaultFileLock: VaultFileLock?
     private var panelController: PanelController!
     private var hotKeyManager: HotKeyManager!
+    private var clipboardManager: ClipboardManager!
     private var statusItem: NSStatusItem?
     private var settingsWindowController: SettingsWindowController!
     private var hotKeyFailureItem: NSMenuItem?
@@ -34,6 +37,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             == defaultVaultFileURL.deletingLastPathComponent().path
         let keychainService = environment["BENRI_KEYCHAIN_SERVICE"]
             ?? "com.crimsonteps.benri"
+        let clipboardDirectoryURL = environment["BENRI_CLIPBOARD_DIRECTORY"]
+            .map { URL(fileURLWithPath: $0, isDirectory: true) }
         let keyStore = VaultKeyStore(
             fileURL: vaultFileURL
                 .deletingLastPathComponent()
@@ -139,6 +144,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             keyStore: keyStore,
             startupFailureMessage: startupFailureMessage
         )
+        clipboardStore = ClipboardStore(directoryURL: clipboardDirectoryURL)
+        paletteState = PaletteState()
         self.startupFailureMessage = startupFailureMessage
         self.startupWarningMessage = startupWarningMessage
         vaultFileLock = acquiredLock
@@ -159,22 +166,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         configureAppearance()
         configureMainMenu()
+        clipboardManager = ClipboardManager(store: clipboardStore, settings: settings)
         panelController = PanelController(
             store: store,
+            clipboardStore: clipboardStore,
+            paletteState: paletteState,
+            clipboardManager: clipboardManager,
             settings: settings,
             openSettings: { [weak self] in self?.openSettings() }
         )
         settingsWindowController = SettingsWindowController(
             settings: settings,
-            selectHotKey: { [weak self] hotKey in self?.applyHotKey(hotKey) }
+            selectHotKey: { [weak self] hotKey in self?.applyHotKey(hotKey) },
+            selectClipboardHotKey: { [weak self] hotKey in
+                self?.applyClipboardHotKey(hotKey)
+            },
+            clearClipboardHistory: { [weak self] in self?.clipboardStore.clearAll() }
         )
         observeMenuBarIconVisibility()
 
-        hotKeyManager = HotKeyManager { [weak self] in
-            self?.panelController.toggle()
-        }
+        hotKeyManager = HotKeyManager(actions: [
+            .commonText: { [weak self] in
+                self?.paletteState.showCommonText()
+                self?.panelController.toggle()
+            },
+            .clipboard: { [weak self] in
+                self?.paletteState.showClipboard()
+                self?.panelController.show()
+            }
+        ])
 
         registerSavedHotKey()
+        clipboardStore.maxAge = settings.clipboardRetention.maxAge
+        clipboardStore.enforceLimits()
+        clipboardManager.updateMonitoring()
+        settings.$clipboardHistoryEnabled
+            .combineLatest(settings.$hasConfirmedClipboardHistory)
+            .sink { [weak self] _, _ in self?.clipboardManager.updateMonitoring() }
+            .store(in: &cancellables)
+        settings.$clipboardRetention
+            .removeDuplicates()
+            .sink { [weak self] retention in
+                self?.clipboardStore.maxAge = retention.maxAge
+                self?.clipboardStore.enforceLimits()
+            }
+            .store(in: &cancellables)
 
         DispatchQueue.main.async { [weak self] in
             self?.panelController.show()
@@ -193,7 +229,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func applicationDidResignActive(_ notification: Notification) {
-        guard startupFailureMessage == nil, panelController.isVisible else { return }
+        guard startupFailureMessage == nil,
+              panelController.isVisible,
+              panelController.shouldHideWhenApplicationResigns
+        else { return }
         panelController.hide(restoringPreviousApplication: false)
     }
 
@@ -212,11 +251,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc private func newRecord() {
         panelController.showNewRecord()
-    }
-
-    @objc private func newCategory() {
-        panelController.show()
-        store.beginNewCategory()
     }
 
     @objc private func focusSearchFromKeyboard() {
@@ -239,7 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         guard let panelController else { return false }
 
         switch menuItem.action {
-        case #selector(newRecord), #selector(newCategory):
+        case #selector(newRecord):
             return panelController.canPresentEditorFromKeyboard
         case #selector(focusSearchFromKeyboard):
             return panelController.canFocusSearchFromKeyboard
@@ -423,21 +457,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func registerSavedHotKey() {
         let hotKey = settings.globalHotKey
         updateHotKeyToolTip(hotKey)
-        if !hotKeyManager.register(hotKey) {
+        if !hotKeyManager.register(hotKey, for: .commonText) {
             showHotKeyFailure(hotKey)
         }
+        registerSavedClipboardHotKey()
     }
 
     private func applyHotKey(_ hotKey: GlobalHotKey) {
         guard hotKey != settings.globalHotKey else { return }
 
-        if hotKeyManager.register(hotKey) {
+        if hotKeyManager.register(hotKey, for: .commonText) {
             settings.globalHotKey = hotKey
             settings.hotKeyError = nil
             updateHotKeyToolTip(hotKey)
             hotKeyFailureItem?.isHidden = true
         } else {
             showHotKeyFailure(hotKey)
+        }
+    }
+
+    private func registerSavedClipboardHotKey() {
+        guard let hotKey = settings.clipboardHotKey else {
+            hotKeyManager.unregister(.clipboard)
+            return
+        }
+        if hotKey == settings.globalHotKey
+            || !hotKeyManager.register(hotKey, for: .clipboard) {
+            settings.clipboardHotKeyError = "\(hotKey.title) 已被占用"
+        } else {
+            settings.clipboardHotKeyError = nil
+        }
+    }
+
+    private func applyClipboardHotKey(_ hotKey: GlobalHotKey?) {
+        guard hotKey != settings.clipboardHotKey else { return }
+        guard let hotKey else {
+            hotKeyManager.unregister(.clipboard)
+            settings.clipboardHotKey = nil
+            settings.clipboardHotKeyError = nil
+            return
+        }
+        guard hotKey != settings.globalHotKey else {
+            settings.clipboardHotKeyError = "不能与 Benri 主快捷键相同"
+            return
+        }
+        if hotKeyManager.register(hotKey, for: .clipboard) {
+            settings.clipboardHotKey = hotKey
+            settings.clipboardHotKeyError = nil
+        } else {
+            settings.clipboardHotKeyError = "\(hotKey.title) 已被其他应用占用"
         }
     }
 
@@ -506,13 +574,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             action: #selector(newRecord),
             keyEquivalent: "n"
         ).target = self
-        let newCategoryItem = fileMenu.addItem(
-            withTitle: "新建分类",
-            action: #selector(newCategory),
-            keyEquivalent: "n"
-        )
-        newCategoryItem.keyEquivalentModifierMask = [.command, .shift]
-        newCategoryItem.target = self
         fileMenu.addItem(.separator())
         fileMenu.addItem(
             withTitle: "备份保险库…",
@@ -612,13 +673,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     private func configureAppearance() {
-        NSApp.appearance = settings.appearanceMode.appearance
-        settings.$appearanceMode
-            .removeDuplicates()
-            .sink { mode in
-                NSApp.appearance = mode.appearance
-            }
-            .store(in: &cancellables)
+        NSApp.appearance = nil
     }
 
     private func showStartupAlert(

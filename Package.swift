@@ -13,7 +13,10 @@ let package = Package(
         .executable(name: "BenriChecks", targets: ["BenriChecks"])
     ],
     targets: [
-        .target(name: "BenriCore"),
+        .target(
+            name: "BenriCore",
+            linkerSettings: [.linkedLibrary("sqlite3")]
+        ),
         .executableTarget(
             name: "Benri",
             dependencies: ["BenriCore"]

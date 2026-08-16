@@ -139,7 +139,7 @@ final class VaultViewModel: ObservableObject {
     }
 
     var filteredRecords: [VaultRecord] {
-        payload.filteredRecords(categoryID: selectedCategoryID, query: searchText)
+        payload.filteredRecords(categoryID: nil, query: searchText)
     }
 
     var selectedRecord: VaultRecord? {
@@ -242,7 +242,7 @@ final class VaultViewModel: ObservableObject {
         case .categories:
             break
         case .records:
-            keyboardPane = .categories
+            break
         case .value:
             keyboardPane = .records
         }
@@ -334,9 +334,10 @@ final class VaultViewModel: ObservableObject {
     func beginEditingRecord(_ id: UUID) {
         guard canModifyVault, record(id: id) != nil else { return }
         flushPendingRecordSave()
+        closeRecordPanel()
         selectedRecordID = id
-        recordPanelMode = .edit
-        keyboardPane = .value
+        keyboardPane = .records
+        recordEditor = RecordEditorContext(recordID: id)
     }
 
     func closeRecordPanel() {
@@ -411,7 +412,7 @@ final class VaultViewModel: ObservableObject {
             recordID = record.id
         }
 
-        selectedCategoryID = safeCategoryID
+        selectedCategoryID = nil
         selectedRecordID = recordID
         recordPanelMode = .closed
         keyboardPane = .records
@@ -595,9 +596,12 @@ final class VaultViewModel: ObservableObject {
 
     @discardableResult
     func copy(_ value: String) -> Bool {
+        let item = NSPasteboardItem()
+        item.setString("1", forType: BenriPasteboard.internalType)
+        item.setString(value, forType: .string)
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        return pasteboard.setString(value, forType: .string)
+        return pasteboard.writeObjects([item])
     }
 
     func openDataFolder() {

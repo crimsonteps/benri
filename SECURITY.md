@@ -27,4 +27,6 @@ Reports are handled on a best-effort basis. Confirmed issues will be assessed, f
 
 Benri is a local convenience utility. Its encrypted vault and local key are stored under the same macOS user account with restrictive file permissions. This protects against casual disclosure of the vault file, but it is not designed to protect data from software or people that already control the logged-in account.
 
-`.benribackup` packages contain both the encrypted vault and its matching key so they can be restored on another Mac. They use restrictive local permissions but are not password-protected; anyone who obtains a backup package can recover its contents. Clipboard contents are also subject to normal macOS clipboard access.
+`.benribackup` packages contain both the encrypted vault and its matching key so they can be restored on another Mac. They use restrictive local permissions but are not password-protected; anyone who obtains a backup package can recover its contents.
+
+Clipboard history is a separate plaintext cache under `~/Library/Caches/com.crimsonteps.benri/Clipboard/`. It is not protected by vault encryption and is intentionally excluded from `.benribackup` packages. Monitoring requires first-use confirmation, ignores common concealed/transient/sensitive pasteboard markers, supports per-application exclusions, and can be paused or cleared in Settings. These protections reduce accidental capture but cannot guarantee that every application marks sensitive clipboard data correctly.

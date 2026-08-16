@@ -155,6 +155,20 @@ extension View {
         modifier(BenriPaletteSurfaceModifier(cornerRadius: cornerRadius))
     }
 
+    func benriCommandSurface(cornerRadius: CGFloat) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        return self
+            .background(Color.black.opacity(0.40), in: shape)
+            .background {
+                BenriVisualEffectView(material: .hudWindow)
+                    .clipShape(shape)
+            }
+            .overlay {
+                shape.stroke(Color.white.opacity(0.12), lineWidth: 1)
+            }
+            .clipShape(shape)
+    }
+
     func benriGlass(cornerRadius: CGFloat) -> some View {
         modifier(BenriGlassModifier(cornerRadius: cornerRadius))
     }

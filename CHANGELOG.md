@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Local text and image clipboard history with search, pinning, source metadata, retention controls, excluded applications, and direct paste.
+- A second optional global shortcut that opens clipboard history directly.
+
+### Changed
+
+- Reworked the main panel as a dark keyboard-first command palette with Common Text and Clipboard modes.
+- The main panel now uses a fixed dark appearance while Settings follows the system appearance.
+- Removed category controls from the reusable-text workflow; existing vault data remains compatible.
+- Replaced the system Actions menus with a keyboard-navigable in-palette `⌘K` panel and a shared Paste/Actions footer control.
+
+### Security
+
+- Clipboard monitoring requires an explicit first-use confirmation, skips common sensitive pasteboard markers, and can be disabled or cleared independently.
+- Clipboard history is a plaintext cache and is intentionally excluded from encrypted `.benribackup` packages.
+
 ## [1.1.0] - 2026-07-25
 
 ### Added

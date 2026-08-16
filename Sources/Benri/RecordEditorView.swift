@@ -7,7 +7,7 @@ struct RecordEditorView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var name: String
-    @State private var selectedCategoryID: UUID
+    private let categoryID: UUID
     @State private var content: String
     @FocusState private var nameIsFocused: Bool
 
@@ -17,11 +17,7 @@ struct RecordEditorView: View {
 
         let existing = context.recordID.flatMap(store.record(id:))
         _name = State(initialValue: existing?.name ?? "")
-        _selectedCategoryID = State(
-            initialValue: existing?.categoryID
-                ?? store.selectedCategoryID
-                ?? store.preferredCategoryID
-        )
+        categoryID = existing?.categoryID ?? store.preferredCategoryID
         _content = State(initialValue: existing?.content ?? "")
     }
 
@@ -42,18 +38,6 @@ struct RecordEditorView: View {
                         RoundedRectangle(cornerRadius: 9)
                             .stroke(Color.primary.opacity(0.1), lineWidth: 1)
                     }
-
-                Picker("分类", selection: $selectedCategoryID) {
-                    ForEach(store.sortedCategories) { category in
-                        Label(
-                            category.name,
-                            systemImage: CategoryIconCatalog.iconName(for: category)
-                        )
-                        .tag(category.id)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 220, alignment: .leading)
 
                 TextEditor(text: $content)
                     .font(.system(size: 13))
@@ -106,7 +90,7 @@ struct RecordEditorView: View {
         store.saveRecord(
             id: context.recordID,
             name: name,
-            categoryID: selectedCategoryID,
+            categoryID: categoryID,
             content: content
         )
         dismiss()

@@ -1116,6 +1116,58 @@ private func checkBackupArchive() throws {
     }
 }
 
+@MainActor
+private func checkClipboardStore() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("BenriClipboardChecks-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let store = ClipboardStore(directoryURL: directory)
+    store.addText("https://example.com/path", sourceBundleID: "com.apple.Safari")
+    store.addText("hello searchable world", sourceBundleID: "com.apple.TextEdit")
+    store.addText("person@example.com", sourceBundleID: nil)
+
+    runner.expect(store.items.count == 3, "剪贴板文本写入 SQLite 缓存")
+    runner.expect(
+        store.search("searchable").first?.text == "hello searchable world",
+        "剪贴板历史支持子串搜索"
+    )
+    runner.expect(
+        store.search("").count == 3,
+        "空搜索展示全部剪贴板历史"
+    )
+
+    if let item = store.items.first(where: { $0.text == "hello searchable world" }) {
+        store.togglePinned(item)
+        runner.expect(store.search("").first?.id == item.id, "固定记录置于历史顶部")
+    } else {
+        runner.expect(false, "固定记录置于历史顶部")
+    }
+
+    let imageData = Data([
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A
+    ])
+    let imageItem = try store.addImage(imageData, sourceBundleID: "com.apple.Preview")
+    let imageURL = try XCTUnwrap(store.imageURL(for: imageItem))
+    runner.expect(FileManager.default.fileExists(atPath: imageURL.path), "剪贴板图片独立写入缓存")
+    let permissions = try FileManager.default.attributesOfItem(atPath: imageURL.path)[.posixPermissions]
+        as? NSNumber
+    runner.expect(permissions?.intValue == 0o600, "剪贴板图片缓存权限为 0600")
+
+    let reloaded = ClipboardStore(directoryURL: directory)
+    runner.expect(reloaded.items.count == 4, "剪贴板历史可跨 Store 实例重新载入")
+    reloaded.clearAll()
+    runner.expect(reloaded.items.isEmpty, "清空历史删除全部数据库记录")
+    runner.expect(!FileManager.default.fileExists(atPath: imageURL.path), "清空历史删除自有图片文件")
+}
+
+private func XCTUnwrap<T>(_ value: T?) throws -> T {
+    guard let value else {
+        throw NSError(domain: "BenriChecks", code: 1)
+    }
+    return value
+}
+
 do {
     try checkModelRoundTrip()
     checkSearchAndCategories()
@@ -1127,6 +1179,9 @@ do {
     try checkVaultFileLock()
     try checkLegacyInstallationMigration()
     try checkBackupArchive()
+    try MainActor.assumeIsolated {
+        try checkClipboardStore()
+    }
 } catch {
     print("✗ 测试运行异常：\(error.localizedDescription)")
     exit(1)

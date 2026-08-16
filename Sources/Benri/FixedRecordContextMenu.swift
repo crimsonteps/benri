@@ -127,3 +127,29 @@ final class RightClickCaptureView: NSView {
         onRightClick?(self)
     }
 }
+
+struct RightClickAction: NSViewRepresentable {
+    let action: () -> Void
+
+    func makeNSView(context: Context) -> RightClickCaptureView {
+        let view = RightClickCaptureView()
+        view.onRightClick = { _ in context.coordinator.action() }
+        return view
+    }
+
+    func updateNSView(_ nsView: RightClickCaptureView, context: Context) {
+        context.coordinator.action = action
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(action: action)
+    }
+
+    final class Coordinator {
+        var action: () -> Void
+
+        init(action: @escaping () -> Void) {
+            self.action = action
+        }
+    }
+}

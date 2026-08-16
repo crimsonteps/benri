@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
 import Combine
+import BenriCore
 import OSLog
 import SwiftUI
 
@@ -15,6 +16,7 @@ extension Notification.Name {
     static let benriClearSearchFocus = Notification.Name("Benri.ClearSearchFocus")
     static let benriSaveActiveEditor = Notification.Name("Benri.SaveActiveEditor")
     static let benriCancelActiveEditor = Notification.Name("Benri.CancelActiveEditor")
+    static let benriActivateActionMenu = Notification.Name("Benri.ActivateActionMenu")
 }
 
 final class BenriPanel: NSPanel {
@@ -27,9 +29,13 @@ final class BenriPanel: NSPanel {
 final class PanelController: NSObject, NSWindowDelegate {
     private let panel: BenriPanel
     private let store: VaultViewModel
+    private let clipboardStore: ClipboardStore
+    private let paletteState: PaletteState
+    private let clipboardManager: ClipboardManager
     private var keyMonitor: Any?
     private var shouldHideAfterEditorDismissal = false
     private var isHidingPanel = false
+    private var isPastingWhileKeepingPanelOpen = false
     private var previousApplication: NSRunningApplication?
     private var previousFocusedElement: AXUIElement?
     private var pasteTask: Task<Void, Never>?
@@ -37,12 +43,22 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var cancellables = Set<AnyCancellable>()
     private let recordContextMenuAnchor = RecordContextMenuAnchor()
 
+    var shouldHideWhenApplicationResigns: Bool {
+        !isPastingWhileKeepingPanelOpen
+    }
+
     init(
         store: VaultViewModel,
+        clipboardStore: ClipboardStore,
+        paletteState: PaletteState,
+        clipboardManager: ClipboardManager,
         settings: AppSettings,
         openSettings: @escaping () -> Void
     ) {
         self.store = store
+        self.clipboardStore = clipboardStore
+        self.paletteState = paletteState
+        self.clipboardManager = clipboardManager
         self.panel = BenriPanel(
             contentRect: NSRect(
                 x: 0,
@@ -51,7 +67,7 @@ final class PanelController: NSObject, NSWindowDelegate {
                 height: VaultLayout.windowHeight
             ),
             styleMask: [
-                .titled,
+                .borderless,
                 .fullSizeContentView,
                 .nonactivatingPanel
             ],
@@ -66,7 +82,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.becomesKeyOnlyIfNeeded = false
         panel.hidesOnDeactivate = false
         panel.level = .floating
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenPrimary]
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.title = "Benri"
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
@@ -75,6 +91,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.isMovableByWindowBackground = false
         panel.backgroundColor = .clear
         panel.isOpaque = false
+        // The palette draws its own rounded shadow. NSPanel's native shadow
+        // follows the rectangular borderless window and exposes square corners.
         panel.hasShadow = false
         panel.contentMinSize = NSSize(
             width: VaultLayout.collapsedWindowWidth,
@@ -82,14 +100,25 @@ final class PanelController: NSObject, NSWindowDelegate {
         )
         let rootView = VaultPanelView(
             store: store,
+            clipboardStore: clipboardStore,
+            paletteState: paletteState,
             settings: settings,
-            recordContextMenuAnchor: recordContextMenuAnchor,
+            clipboardManager: clipboardManager,
             openSettings: openSettings,
             onClose: { [weak self] in
                 self?.hide(restoringPreviousApplication: true)
             },
             onPasteRecord: { [weak self] recordID in
                 self?.copyRecordAndPaste(recordID)
+            },
+            onPasteClipboard: { [weak self] item in
+                self?.copyClipboardAndPaste(item)
+            },
+            onCopyClipboard: { [weak self] item in
+                self?.copyClipboard(item)
+            },
+            onPasteClipboardKeepingOpen: { [weak self] item in
+                self?.pasteClipboardKeepingPanelOpen(item)
             },
             onEditorDismissed: { [weak self] in self?.editorDidDismiss() }
         )
@@ -115,7 +144,8 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
         guard panel.isKeyWindow || panel.attachedSheet?.isKeyWindow == true,
-              store.alert == nil
+              store.alert == nil,
+              paletteState.confirmation == nil
         else { return event }
 
         // Let an input method finish or navigate its marked text before Benri
@@ -129,6 +159,28 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
         guard panel.attachedSheet == nil else { return event }
 
+        let initialModifiers = shortcutModifiers(for: event)
+        let initialKeyCode = Int(event.keyCode)
+        if initialModifiers == [.command], initialKeyCode == kVK_ANSI_K {
+            paletteState.toggleActionMenu(actions: availablePaletteActions)
+            return nil
+        }
+        if paletteState.actionMenuOpen {
+            return handleActionMenuKeyDown(event)
+        }
+        if Int(event.keyCode) == kVK_Tab, initialModifiers.isEmpty {
+            paletteState.toggleMode()
+            if paletteState.mode == .clipboard {
+                paletteState.ensureClipboardSelection(in: clipboardStore)
+            } else {
+                store.ensureSelection()
+            }
+            return nil
+        }
+        if paletteState.mode == .clipboard {
+            return handleClipboardKeyDown(event)
+        }
+
         let modifiers = shortcutModifiers(for: event)
         let keyCode = Int(event.keyCode)
 
@@ -137,6 +189,11 @@ final class PanelController: NSObject, NSWindowDelegate {
             case kVK_ANSI_F:
                 focusSearchFromKeyboard()
                 return nil
+            case kVK_Return, kVK_ANSI_KeypadEnter:
+                if store.recordPanelMode == .edit {
+                    return finishInlineRecordEditing() ? nil : event
+                }
+                return store.copySelectedRecord() ? nil : event
             case kVK_ANSI_E:
                 guard !preservesNativeTextEditingCommands else { return event }
                 return editKeyboardSelection() ? nil : event
@@ -149,7 +206,7 @@ final class PanelController: NSObject, NSWindowDelegate {
                       store.copySelectedRecord()
                 else { return event }
                 return nil
-            case kVK_ANSI_S, kVK_Return, kVK_ANSI_KeypadEnter:
+            case kVK_ANSI_S:
                 return finishInlineRecordEditing() ? nil : event
             default:
                 break
@@ -235,13 +292,87 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
     }
 
+    private func handleClipboardKeyDown(_ event: NSEvent) -> NSEvent? {
+        let modifiers = shortcutModifiers(for: event)
+        let keyCode = Int(event.keyCode)
+
+        if modifiers == [.command] {
+            switch keyCode {
+            case kVK_Return, kVK_ANSI_KeypadEnter:
+                if let item = paletteState.selectedClipboardItem(in: clipboardStore) {
+                    copyClipboard(item)
+                    return nil
+                }
+            case kVK_ANSI_Period:
+                if let item = paletteState.selectedClipboardItem(in: clipboardStore) {
+                    clipboardStore.togglePinned(item)
+                    paletteState.ensureClipboardSelection(in: clipboardStore)
+                    return nil
+                }
+            case kVK_Delete, kVK_ForwardDelete:
+                if let item = paletteState.selectedClipboardItem(in: clipboardStore) {
+                    paletteState.confirmation = .deleteClipboard(item.id)
+                    return nil
+                }
+            case kVK_ANSI_F:
+                focusSearchFromKeyboard()
+                return nil
+            default:
+                break
+            }
+        }
+
+        if modifiers == [.option],
+           keyCode == kVK_Return || keyCode == kVK_ANSI_KeypadEnter,
+           let item = paletteState.selectedClipboardItem(in: clipboardStore) {
+            pasteClipboardKeepingPanelOpen(item)
+            return nil
+        }
+
+        if modifiers == [.control], keyCode == kVK_ANSI_X {
+            if let item = paletteState.selectedClipboardItem(in: clipboardStore) {
+                paletteState.confirmation = .deleteClipboard(item.id)
+            }
+            return nil
+        }
+
+        if modifiers == [.control, .shift], keyCode == kVK_ANSI_X {
+            paletteState.confirmation = .clearClipboard
+            return nil
+        }
+
+        guard modifiers.isEmpty else { return event }
+        switch keyCode {
+        case kVK_UpArrow:
+            paletteState.moveClipboardSelection(-1, in: clipboardStore)
+            return nil
+        case kVK_DownArrow:
+            paletteState.moveClipboardSelection(1, in: clipboardStore)
+            return nil
+        case kVK_Return, kVK_ANSI_KeypadEnter:
+            if let item = paletteState.selectedClipboardItem(in: clipboardStore) {
+                copyClipboardAndPaste(item)
+                return nil
+            }
+        case kVK_Escape:
+            hide(restoringPreviousApplication: true)
+            return nil
+        default:
+            return event
+        }
+        return event
+    }
+
     @discardableResult
     private func copyRecordAndPaste(_ recordID: UUID? = nil) -> Bool {
         guard store.recordPanelMode != .edit else { return false }
         if let recordID {
             store.selectRecord(recordID)
         }
-        guard store.copySelectedRecord() else { return false }
+        guard let content = store.selectedRecord?.content,
+              !content.isEmpty,
+              clipboardManager.writeText(content)
+        else { return false }
 
         pasteLogger.info("Record requested paste")
         hide(
@@ -249,6 +380,104 @@ final class PanelController: NSObject, NSWindowDelegate {
             pastingIntoPreviousApplication: true
         )
         return true
+    }
+
+    @discardableResult
+    private func copyClipboard(_ item: ClipboardItem) -> Bool {
+        clipboardManager.write(item)
+    }
+
+    @discardableResult
+    private func copyClipboardAndPaste(_ item: ClipboardItem) -> Bool {
+        guard clipboardManager.write(item) else { return false }
+        clipboardStore.promote(item)
+        pasteLogger.info("Clipboard history item requested paste")
+        hide(
+            restoringPreviousApplication: true,
+            pastingIntoPreviousApplication: true
+        )
+        return true
+    }
+
+    @discardableResult
+    private func pasteClipboardKeepingPanelOpen(_ item: ClipboardItem) -> Bool {
+        guard clipboardManager.write(item),
+              let previousApplication,
+              !previousApplication.isTerminated,
+              accessibilityPermissionGranted(prompt: true)
+        else { return false }
+        clipboardStore.promote(item)
+        cancelPendingPaste()
+        isPastingWhileKeepingPanelOpen = true
+        let transactionID = pasteTransactionID
+        let focusedElement = previousFocusedElement
+        pasteTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.runPasteTransaction(
+                transactionID: transactionID,
+                application: previousApplication,
+                focusedElement: focusedElement
+            )
+            guard self.pasteTransactionID == transactionID else { return }
+            self.pasteTask = nil
+            self.isPastingWhileKeepingPanelOpen = false
+            NSRunningApplication.current.activate(
+                options: [.activateAllWindows, .activateIgnoringOtherApps]
+            )
+            self.panel.orderFrontRegardless()
+            self.panel.makeKeyAndOrderFront(nil)
+        }
+        return true
+    }
+
+    private var availablePaletteActions: [PaletteAction] {
+        PaletteAction.available(
+            mode: paletteState.mode,
+            record: store.selectedRecord,
+            clipboardItem: paletteState.selectedClipboardItem(in: clipboardStore)
+        )
+    }
+
+    private func handleActionMenuKeyDown(_ event: NSEvent) -> NSEvent? {
+        let modifiers = shortcutModifiers(for: event)
+        let keyCode = Int(event.keyCode)
+
+        if modifiers == [.command],
+           keyCode == kVK_Return || keyCode == kVK_ANSI_KeypadEnter {
+            paletteState.closeActionMenu()
+            switch paletteState.mode {
+            case .commonText:
+                _ = store.copySelectedRecord()
+            case .clipboard:
+                if let item = paletteState.selectedClipboardItem(in: clipboardStore) {
+                    _ = copyClipboard(item)
+                }
+            }
+            return nil
+        }
+
+        if modifiers == [.option],
+           keyCode == kVK_Return || keyCode == kVK_ANSI_KeypadEnter,
+           let item = paletteState.selectedClipboardItem(in: clipboardStore) {
+            paletteState.closeActionMenu()
+            _ = pasteClipboardKeepingPanelOpen(item)
+            return nil
+        }
+
+        guard modifiers.isEmpty else { return nil }
+        switch keyCode {
+        case kVK_UpArrow:
+            paletteState.moveActionMenuSelection(-1, actions: availablePaletteActions)
+        case kVK_DownArrow:
+            paletteState.moveActionMenuSelection(1, actions: availablePaletteActions)
+        case kVK_Return, kVK_ANSI_KeypadEnter:
+            NotificationCenter.default.post(name: .benriActivateActionMenu, object: nil)
+        case kVK_Escape:
+            paletteState.closeActionMenu()
+        default:
+            break
+        }
+        return nil
     }
 
     private func handleActiveEditorShortcut(_ event: NSEvent) -> Bool {
@@ -483,6 +712,7 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func show() {
         cancelPendingPaste()
+        paletteState.closeActionMenu()
 
         if !panel.isVisible {
             store.closeRecordPanel()
@@ -501,7 +731,11 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
 
         positionPanel()
-        store.activateRecordNavigation()
+        if paletteState.mode == .commonText {
+            store.activateRecordNavigation()
+        } else {
+            paletteState.ensureClipboardSelection(in: clipboardStore)
+        }
         if panel.isMiniaturized {
             panel.deminiaturize(nil)
         }
@@ -543,6 +777,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         pastingIntoPreviousApplication shouldPaste: Bool = false
     ) {
         cancelPendingPaste()
+        paletteState.closeActionMenu()
         guard !isHidingPanel else { return }
         isHidingPanel = true
         defer { isHidingPanel = false }
@@ -606,7 +841,10 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func windowDidResignKey(_ notification: Notification) {
-        guard panel.isVisible, !isHidingPanel else { return }
+        guard panel.isVisible,
+              !isHidingPanel,
+              !isPastingWhileKeepingPanelOpen
+        else { return }
 
         DispatchQueue.main.async { [weak self] in
             guard let self,
@@ -870,9 +1108,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         for mode: RecordPanelMode,
         hasFatalError: Bool
     ) {
-        let targetWidth = !hasFatalError && mode == .closed
-            ? VaultLayout.collapsedWindowWidth
-            : VaultLayout.expandedWindowWidth
+        let targetWidth = VaultLayout.expandedWindowWidth
         let targetMinimumSize = NSSize(
             width: targetWidth,
             height: VaultLayout.windowHeight

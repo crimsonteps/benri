@@ -34,10 +34,12 @@
 ## Highlights
 
 - Open Benri anywhere with a global keyboard shortcut
-- Find reusable text quickly with categories and title search
+- Find reusable text quickly with title search
+- Capture and search local text and image clipboard history
+- Press `Tab` to switch between reusable text and clipboard history
 - Browse, select, and open read-only previews entirely from the keyboard
 - Press `Return` to copy the selected content and paste it back into the previous app
-- Edit free-form multi-line text with automatic saving and custom categories
+- Edit free-form multi-line text with automatic saving
 - Keep data encrypted on your Mac, with validated backup and restore
 
 ## System experience
@@ -66,17 +68,24 @@ The current v1.0.0 build is ad-hoc signed and not notarized, so macOS may requir
 | Shortcut | Action |
 | --- | --- |
 | Configurable global shortcut | Show or hide Benri |
-| `↑` / `↓` | Move through categories or records |
-| `→` | Enter the record list or open the selected record's read-only preview |
-| `←` | Close the preview or return to categories |
+| Optional clipboard shortcut | Open clipboard history directly |
+| `Tab` | Switch between reusable text and clipboard history |
+| `↑` / `↓` | Move through reusable text or clipboard items |
+| `→` | Open the selected record's read-only preview |
+| `←` | Close the preview |
 | `Return` | Copy the selected record and paste into the previous app |
+| `⌘Return` | Copy the selected clipboard item without pasting |
+| `⌥Return` | Paste a clipboard item while keeping the panel open |
+| `⌘.` | Pin or unpin a clipboard item |
+| `⌘K` | Open or close the selected item's Actions panel |
+| `⌃X` | Delete the selected clipboard item |
+| `⌃⇧X` | Clear clipboard history after confirmation |
 | `⌘F` | Focus the record search field |
 | `⌘N` | Create a record |
-| `⌘⇧N` | Create a category |
-| `⌃Return` | Open the action menu for the selected category or record |
-| `⌘E` | Edit the selected category or record |
-| `⌘⌫` | Delete the selected category or record |
-| `⌘S` or `⌘Return` | Save record or category edits |
+| `⌃Return` | Open the action menu for the selected record |
+| `⌘E` | Edit the selected record |
+| `⌘⌫` | Delete the selected record |
+| `⌘S` or `⌘Return` | Save record edits |
 | `⌘,` | Open Settings |
 | `Esc` | Close the editor or hide the panel |
 
@@ -95,6 +104,14 @@ Benri stores its data in its own Application Support directory:
 - Benri does not upload records, keys, or usage data, and makes no background network requests.
 - Benri never silently replaces a vault that it cannot decrypt or recognize.
 - Backups are validated before restore, and a recovery copy is kept before replacing a healthy vault.
+
+Clipboard history starts only after first-use confirmation and is stored as a plaintext cache at:
+
+```text
+~/Library/Caches/com.crimsonteps.benri/Clipboard/
+```
+
+It is retained for 90 days by default and can be paused, cleared, or disabled per source application. Benri skips common sensitive pasteboard markers. Clipboard history is excluded from `.benribackup` packages and is not removed by Reset Vault.
 
 The key and encrypted vault are stored under the same macOS user account, so Benri cannot defend against software or people that already control the logged-in account. A `.benribackup` package includes the matching recovery key and must be protected like the original data. Benri is a convenience utility, not a replacement for a dedicated password manager. See [SECURITY.md](SECURITY.md) for the complete security boundary.
 
@@ -134,7 +151,7 @@ Scripts/             App and release packaging
 
 ## Scope
 
-Benri intentionally stays focused on a fast, private, single-Mac workflow for reusable text. Cloud sync, browser autofill, and cross-platform clients are outside the current scope.
+Benri intentionally stays focused on a fast, single-Mac workflow for reusable text and clipboard history. Cloud sync, browser autofill, and cross-platform clients are outside the current scope.
 
 ## Contributing
 

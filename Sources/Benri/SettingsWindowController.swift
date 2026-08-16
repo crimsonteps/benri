@@ -7,10 +7,12 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     init(
         settings: AppSettings,
-        selectHotKey: @escaping (GlobalHotKey) -> Void
+        selectHotKey: @escaping (GlobalHotKey) -> Void,
+        selectClipboardHotKey: @escaping (GlobalHotKey?) -> Void,
+        clearClipboardHistory: @escaping () -> Void
     ) {
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 580),
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 660),
             styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -31,13 +33,15 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.contentView = NSHostingView(
             rootView: SettingsView(
                 settings: settings,
-                selectHotKey: selectHotKey
+                selectHotKey: selectHotKey,
+                selectClipboardHotKey: selectClipboardHotKey,
+                clearClipboardHistory: clearClipboardHistory
             )
         )
     }
 
     func show() {
-        window.appearance = NSApp.appearance
+        window.appearance = nil
         NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
         NSApp.activate(ignoringOtherApps: true)
         window.center()
