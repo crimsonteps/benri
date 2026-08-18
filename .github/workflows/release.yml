@@ -89,7 +89,7 @@ jobs:
         shell: bash
         run: |
           APP="dist/Benri.app"
-          ZIP="dist/Benri-${GITHUB_REF_NAME}-macOS-universal.zip"
+          ZIP="dist/Benri-v${GITHUB_REF_NAME#v}-macOS-universal.zip"
           codesign --verify --deep --strict --verbose=2 "$APP"
           codesign -dvvv "$APP"
           ARCHS="$(lipo -archs "$APP/Contents/MacOS/Benri")"
@@ -100,7 +100,7 @@ jobs:
         shell: bash
         run: |
           APP="dist/Benri.app"
-          ZIP="dist/Benri-${GITHUB_REF_NAME}-macOS-universal.zip"
+          ZIP="dist/Benri-v${GITHUB_REF_NAME#v}-macOS-universal.zip"
 
           xcrun notarytool submit "$ZIP" \
             --apple-id "$NOTARY_APPLE_ID" \
@@ -117,7 +117,7 @@ jobs:
         shell: bash
         run: |
           APP="dist/Benri.app"
-          ZIP="dist/Benri-${GITHUB_REF_NAME}-macOS-universal.zip"
+          ZIP="dist/Benri-v${GITHUB_REF_NAME#v}-macOS-universal.zip"
           codesign --verify --deep --strict --verbose=2 "$APP"
           spctl --assess --type execute --verbose=2 "$APP"
           shasum -a 256 "$ZIP"
@@ -127,7 +127,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          ASSET="dist/Benri-${GITHUB_REF_NAME}-macOS-universal.zip"
+          ASSET="dist/Benri-v${GITHUB_REF_NAME#v}-macOS-universal.zip"
           NOTES="docs/releases/${GITHUB_REF_NAME}.md"
 
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
