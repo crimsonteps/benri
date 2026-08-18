@@ -61,7 +61,7 @@
 
 GitHub displays the SHA-256 digest next to the release asset, so no separate checksum download is required.
 
-The current v1.0.0 build is ad-hoc signed and not notarized, so macOS may require you to Control-click the app and choose **Open**. Starting with v1.1.0, release automation publishes an archive only after Developer ID signing, notarization, and Gatekeeper verification all succeed.
+Release builds are ad-hoc signed and not notarized, so macOS may require you to Control-click the app and choose **Open**.
 
 ## Keyboard workflow
 

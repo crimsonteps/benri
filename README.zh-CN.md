@@ -61,7 +61,7 @@
 
 GitHub 会在 Release 安装包旁直接显示 SHA-256，无需下载单独的校验文件。
 
-当前 v1.0.0 使用 ad-hoc 签名且未经过 Apple 公证，首次打开时可能需要按住 Control 点击应用并选择“打开”。从 v1.1.0 开始，Release 自动化只有在 Developer ID 签名、公证和 Gatekeeper 检查全部通过后才会发布安装包。
+发布版本使用 ad-hoc 签名且未经过 Apple 公证，首次打开时可能需要按住 Control 点击应用并选择“打开”。
 
 ## 快捷键
 

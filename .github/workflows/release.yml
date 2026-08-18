@@ -12,14 +12,6 @@ jobs:
   release:
     runs-on: macos-latest
     timeout-minutes: 30
-    env:
-      SIGNING_CERTIFICATE_P12: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_P12 }}
-      SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_PASSWORD }}
-      SIGNING_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_IDENTITY }}
-      NOTARY_APPLE_ID: ${{ secrets.APPLE_ID }}
-      NOTARY_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      NOTARY_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-
     steps:
       - name: Check out source
         uses: actions/checkout@v7
@@ -34,56 +26,11 @@ jobs:
             exit 1
           fi
 
-      - name: Require Developer ID and notarization secrets
-        shell: bash
-        run: |
-          required=(
-            SIGNING_CERTIFICATE_P12
-            SIGNING_CERTIFICATE_PASSWORD
-            SIGNING_IDENTITY
-            NOTARY_APPLE_ID
-            NOTARY_TEAM_ID
-            NOTARY_PASSWORD
-          )
-          for name in "${required[@]}"; do
-            if [[ -z "${!name}" ]]; then
-              echo "::error::Missing required release secret: $name"
-              exit 1
-            fi
-          done
-
-      - name: Import Developer ID certificate
-        shell: bash
-        run: |
-          KEYCHAIN_PATH="$RUNNER_TEMP/benri-signing.keychain-db"
-          KEYCHAIN_PASSWORD="$(uuidgen)"
-          CERTIFICATE_PATH="$RUNNER_TEMP/benri-signing.p12"
-
-          printf '%s' "$SIGNING_CERTIFICATE_P12" | /usr/bin/base64 -D > "$CERTIFICATE_PATH"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$CERTIFICATE_PATH" \
-            -k "$KEYCHAIN_PATH" \
-            -P "$SIGNING_CERTIFICATE_PASSWORD" \
-            -T /usr/bin/codesign
-          security set-key-partition-list \
-            -S apple-tool:,apple: \
-            -s \
-            -k "$KEYCHAIN_PASSWORD" \
-            "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH"
-
-          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
-          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
-
       - name: Run checks
         run: make test
 
-      - name: Build signed Universal 2 release
+      - name: Build ad-hoc signed Universal 2 release
         run: make release
-        env:
-          CODESIGN_IDENTITY: ${{ env.SIGNING_IDENTITY }}
 
       - name: Verify signed archive
         shell: bash
@@ -96,30 +43,12 @@ jobs:
           [[ "$ARCHS" == *arm64* && "$ARCHS" == *x86_64* ]]
           test -f "$ZIP"
 
-      - name: Notarize and staple
-        shell: bash
-        run: |
-          APP="dist/Benri.app"
-          ZIP="dist/Benri-v${GITHUB_REF_NAME#v}-macOS-universal.zip"
-
-          xcrun notarytool submit "$ZIP" \
-            --apple-id "$NOTARY_APPLE_ID" \
-            --team-id "$NOTARY_TEAM_ID" \
-            --password "$NOTARY_PASSWORD" \
-            --wait
-          xcrun stapler staple "$APP"
-          xcrun stapler validate "$APP"
-
-          rm -f "$ZIP"
-          ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
-
-      - name: Verify public release artifact
+      - name: Verify release artifact
         shell: bash
         run: |
           APP="dist/Benri.app"
           ZIP="dist/Benri-v${GITHUB_REF_NAME#v}-macOS-universal.zip"
           codesign --verify --deep --strict --verbose=2 "$APP"
-          spctl --assess --type execute --verbose=2 "$APP"
           shasum -a 256 "$ZIP"
 
       - name: Create GitHub Release
@@ -142,12 +71,4 @@ jobs:
               --verify-tag \
               --title "Benri $GITHUB_REF_NAME" \
               --generate-notes
-          fi
-
-      - name: Remove temporary signing keychain
-        if: always()
-        shell: bash
-        run: |
-          if [[ -n "${KEYCHAIN_PATH:-}" ]]; then
-            security delete-keychain "$KEYCHAIN_PATH" || true
           fi
