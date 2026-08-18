@@ -712,10 +712,12 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func show() {
         cancelPendingPaste()
-        paletteState.closeActionMenu()
+        // Every invocation starts cleanly. The caller sets the desired mode
+        // (common text or clipboard) before calling show().
+        store.resetTransientState()
+        paletteState.resetTransientState()
 
         if !panel.isVisible {
-            store.closeRecordPanel()
             previousApplication = nil
             previousFocusedElement = nil
 

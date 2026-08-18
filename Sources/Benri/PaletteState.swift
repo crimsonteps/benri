@@ -47,6 +47,15 @@ final class PaletteState: ObservableObject {
     @Published var actionMenuOpen = false
     @Published var actionMenuSelection = 0
 
+    /// Clears interaction state so a newly opened palette never inherits the
+    /// previous invocation's search, selection, or modal UI.
+    func resetTransientState() {
+        clipboardQuery = ""
+        selectedClipboardID = nil
+        confirmation = nil
+        closeActionMenu()
+    }
+
     func showCommonText() {
         mode = .commonText
     }

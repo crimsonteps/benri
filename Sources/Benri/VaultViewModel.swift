@@ -273,6 +273,20 @@ final class VaultViewModel: ObservableObject {
         keyboardPane = .records
     }
 
+    /// Reset UI-only navigation state when the palette is opened again.
+    func resetTransientState() {
+        selectedCategoryID = nil
+        selectedRecordID = nil
+        searchText = ""
+        recordEditor = nil
+        categoryEditor = nil
+        alert = nil
+        isEditingRecordName = false
+        isSearchFocused = false
+        closeRecordPanel()
+        keyboardPane = .records
+    }
+
     func handleFilterChange() {
         closeRecordPanel()
         keyboardPane = .records
