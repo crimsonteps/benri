@@ -1123,6 +1123,11 @@ private func checkClipboardStore() throws {
     defer { try? FileManager.default.removeItem(at: directory) }
 
     let store = ClipboardStore(directoryURL: directory)
+    runner.expect(
+        ClipboardRetention.threeHours.title == "3 小时"
+            && ClipboardRetention.threeHours.maxAge == 10_800,
+        "剪贴板历史支持保留最近 3 小时"
+    )
     store.addText("https://example.com/path", sourceBundleID: "com.apple.Safari")
     store.addText("hello searchable world", sourceBundleID: "com.apple.TextEdit")
     store.addText("person@example.com", sourceBundleID: nil)

@@ -6,23 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-08-22
+
 ### Added
 
-- Local text and image clipboard history with search, pinning, source metadata, retention controls, excluded applications, and direct paste.
-- A second optional global shortcut that opens clipboard history directly.
+- A 3-hour clipboard-history retention option alongside the existing day-to-forever choices.
 
 ### Changed
 
-- Reworked the main panel as a dark keyboard-first command palette with Common Text and Clipboard modes.
-- The main panel now uses a fixed dark appearance while Settings follows the system appearance.
-- Removed category controls from the reusable-text workflow; existing vault data remains compatible.
-- Replaced the system Actions menus with a keyboard-navigable in-palette `⌘K` panel and a shared Paste/Actions footer control.
-- Simplified the menu bar menu around direct Common Text and Clipboard entry points, clipboard capture, and Settings.
-
-### Security
-
-- Clipboard monitoring requires an explicit first-use confirmation, skips common sensitive pasteboard markers, and can be disabled or cleared independently.
-- Clipboard history is a plaintext cache and is intentionally excluded from encrypted `.benribackup` packages.
+- The command palette now follows the current macOS light or dark appearance.
+- Simplified the footer hint to show only `Tab` switching without repeating the current mode.
 
 ## [1.1.0] - 2026-07-25
 
@@ -64,6 +57,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Zero-dependency checks for model migration, encryption, and file storage.
 - Universal 2 release packaging and automated GitHub release workflow.
 
-[Unreleased]: https://github.com/crimsonteps/benri/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/crimsonteps/benri/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/crimsonteps/benri/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/crimsonteps/benri/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/crimsonteps/benri/releases/tag/v1.0.0

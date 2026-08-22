@@ -86,7 +86,7 @@ private struct BenriFloatingSurfaceModifier<S: Shape>: ViewModifier {
             if #available(macOS 26.0, *) {
                 content
                     .glassEffect(
-                        .regular.interactive().tint(Color.white.opacity(0.04)),
+                        .regular.interactive().tint(Color.primary.opacity(0.04)),
                         in: shape
                     )
                     .tint(.clear)
@@ -150,23 +150,38 @@ private struct BenriGlassModifier: ViewModifier {
     }
 }
 
+private struct BenriCommandSurfaceModifier: ViewModifier {
+    let cornerRadius: CGFloat
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        return content
+            .background(BenriTheme.Colors.panelTint(for: colorScheme), in: shape)
+            .background {
+                BenriVisualEffectView(
+                    material: colorScheme == .dark ? .hudWindow : .popover
+                )
+                .clipShape(shape)
+            }
+            .overlay {
+                shape.stroke(
+                    BenriTheme.Colors.border(for: colorScheme),
+                    lineWidth: 1
+                )
+            }
+            .clipShape(shape)
+    }
+}
+
 extension View {
     func benriPaletteSurface(cornerRadius: CGFloat) -> some View {
         modifier(BenriPaletteSurfaceModifier(cornerRadius: cornerRadius))
     }
 
     func benriCommandSurface(cornerRadius: CGFloat) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        return self
-            .background(Color.black.opacity(0.40), in: shape)
-            .background {
-                BenriVisualEffectView(material: .hudWindow)
-                    .clipShape(shape)
-            }
-            .overlay {
-                shape.stroke(Color.white.opacity(0.12), lineWidth: 1)
-            }
-            .clipShape(shape)
+        modifier(BenriCommandSurfaceModifier(cornerRadius: cornerRadius))
     }
 
     func benriGlass(cornerRadius: CGFloat) -> some View {

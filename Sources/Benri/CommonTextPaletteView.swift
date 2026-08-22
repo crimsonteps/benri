@@ -12,7 +12,7 @@ struct CommonTextPaletteView: View {
                 .frame(width: 330)
 
             Rectangle()
-                .fill(Color.white.opacity(0.10))
+                .fill(Color.primary.opacity(0.10))
                 .frame(width: 1)
                 .padding(.vertical, 10)
 
@@ -29,7 +29,7 @@ struct CommonTextPaletteView: View {
                     Text(store.searchText.isEmpty ? "还没有常用文本" : "没有匹配的常用文本")
                         .font(.system(size: 13, weight: .medium))
                 }
-                .foregroundStyle(Color.white.opacity(0.48))
+                .foregroundStyle(Color.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollViewReader { proxy in
@@ -79,8 +79,8 @@ struct CommonTextPaletteView: View {
                     .font(.system(size: 13, design: .monospaced))
                     .foregroundStyle(
                         record.content.isEmpty
-                            ? Color.white.opacity(0.35)
-                            : Color.white.opacity(0.88)
+                            ? Color.secondary
+                            : Color.primary.opacity(0.88)
                     )
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -94,7 +94,7 @@ struct CommonTextPaletteView: View {
                 Text("选择一条常用文本以预览")
                     .font(.system(size: 13))
             }
-            .foregroundStyle(Color.white.opacity(0.35))
+            .foregroundStyle(Color.secondary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
@@ -108,22 +108,22 @@ private struct CommonTextRow: View {
     var body: some View {
         HStack(spacing: 11) {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(Color.white.opacity(0.10))
+                .fill(Color.primary.opacity(0.10))
                 .frame(width: 34, height: 34)
                 .overlay {
                     Image(systemName: "doc.text")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.58))
+                        .foregroundStyle(Color.secondary)
                 }
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(record.name)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.92))
+                    .foregroundStyle(Color.primary.opacity(0.92))
                     .lineLimit(1)
                 Text(record.content.isEmpty ? "暂无内容" : record.content)
                     .font(.system(size: 11))
-                    .foregroundStyle(Color.white.opacity(0.42))
+                    .foregroundStyle(Color.secondary)
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
@@ -134,8 +134,8 @@ private struct CommonTextRow: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(
                     selected
-                        ? Color.white.opacity(0.16)
-                        : hovering ? Color.white.opacity(0.07) : Color.clear
+                        ? Color.primary.opacity(0.16)
+                        : hovering ? Color.primary.opacity(0.07) : Color.clear
                 )
         )
         .onHover { hovering = $0 }

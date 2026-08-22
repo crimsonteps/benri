@@ -68,7 +68,6 @@ struct VaultPanelView: View {
         .alert(item: $store.alert) { alert in
             makeAlert(alert)
         }
-        .preferredColorScheme(.dark)
         .onChange(of: paletteState.mode) { mode in
             if mode == .clipboard, !settings.hasConfirmedClipboardHistory {
                 paletteState.confirmation = .enableClipboard
@@ -91,7 +90,7 @@ struct VaultPanelView: View {
         ZStack {
             VStack(spacing: 0) {
                 header
-                Rectangle().fill(Color.white.opacity(0.06)).frame(height: 1)
+                Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
                 Group {
                     switch paletteState.mode {
                     case .commonText:
@@ -109,7 +108,7 @@ struct VaultPanelView: View {
                         )
                     }
                 }
-                Rectangle().fill(Color.white.opacity(0.06)).frame(height: 1)
+                Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
                 footer
             }
 
@@ -145,7 +144,7 @@ struct VaultPanelView: View {
             } label: {
                 Image(systemName: paletteState.mode == .commonText ? "text.quote" : "doc.on.clipboard")
                     .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.62))
+                    .foregroundStyle(Color.primary.opacity(0.62))
                     .frame(width: 28, height: 28)
             }
             .buttonStyle(.plain)
@@ -154,8 +153,8 @@ struct VaultPanelView: View {
             TextField(searchPrompt, text: searchBinding)
                 .textFieldStyle(.plain)
                 .font(.system(size: 20, weight: .regular))
-                .foregroundStyle(Color.white.opacity(0.92))
-                .tint(.white)
+                .foregroundStyle(Color.primary.opacity(0.92))
+                .tint(.accentColor)
                 .focused($searchFocused)
                 .onSubmit(performPrimaryAction)
         }
@@ -169,18 +168,15 @@ struct VaultPanelView: View {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 14, weight: .semibold))
                     .frame(width: 32, height: 32)
-                    .background(Color.white.opacity(0.10), in: Circle())
+                    .background(Color.primary.opacity(0.10), in: Circle())
             }
             .buttonStyle(.plain)
-            .foregroundStyle(Color.white.opacity(0.68))
+            .foregroundStyle(Color.primary.opacity(0.68))
             .help("设置 ⌘,")
 
-            Text(paletteState.mode == .commonText ? "常用文本" : "剪贴板")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.36))
             Text("Tab 切换")
                 .font(.system(size: 10, design: .rounded))
-                .foregroundStyle(Color.white.opacity(0.30))
+                .foregroundStyle(Color.primary.opacity(0.30))
 
             Spacer()
 
@@ -198,13 +194,13 @@ struct VaultPanelView: View {
                             Text("操作")
                             PaletteShortcutView(shortcut: "⌘K")
                         }
-                        .foregroundStyle(Color.white.opacity(0.64))
+                        .foregroundStyle(Color.primary.opacity(0.64))
                     }
                 }
                 .padding(4)
-                .background(Color.white.opacity(0.10), in: Capsule())
+                .background(Color.primary.opacity(0.10), in: Capsule())
                 .overlay {
-                    Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1)
+                    Capsule().stroke(Color.primary.opacity(0.10), lineWidth: 1)
                 }
             }
         }
@@ -238,7 +234,7 @@ struct VaultPanelView: View {
             if let header = actionMenuHeader {
                 Text(header)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.48))
+                    .foregroundStyle(Color.primary.opacity(0.48))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .padding(.horizontal, 12)
@@ -264,7 +260,7 @@ struct VaultPanelView: View {
         .padding(6)
         .frame(width: 276)
         .background(
-            Color.black.opacity(0.82),
+            Color(nsColor: .controlBackgroundColor),
             in: RoundedRectangle(cornerRadius: 16, style: .continuous)
         )
         .background(
@@ -273,7 +269,7 @@ struct VaultPanelView: View {
         )
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                .stroke(Color.primary.opacity(0.14), lineWidth: 1)
         }
         .shadow(color: .black.opacity(0.45), radius: 18, y: 6)
     }
@@ -453,12 +449,12 @@ struct VaultPanelView: View {
         VStack(spacing: 14) {
             Image(systemName: confirmationIcon(confirmation))
                 .font(.system(size: 28, weight: .light))
-                .foregroundStyle(Color.white.opacity(0.72))
+                .foregroundStyle(Color.primary.opacity(0.72))
             Text(confirmationTitle(confirmation))
                 .font(.system(size: 17, weight: .semibold))
             Text(confirmationMessage(confirmation))
                 .font(.system(size: 12))
-                .foregroundStyle(Color.white.opacity(0.52))
+                .foregroundStyle(Color.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 330)
             HStack(spacing: 10) {
@@ -470,10 +466,10 @@ struct VaultPanelView: View {
         }
         .padding(28)
         .frame(width: 390)
-        .background(Color.black.opacity(0.88), in: RoundedRectangle(cornerRadius: 18))
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 18))
         .overlay {
             RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                .stroke(Color.primary.opacity(0.14), lineWidth: 1)
         }
         .shadow(color: .black.opacity(0.5), radius: 24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -573,11 +569,11 @@ private struct PaletteActionRow: View {
                 Image(systemName: systemImage)
                     .font(.system(size: 13))
                     .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(destructive ? Color.red : Color.white.opacity(0.58))
+                    .foregroundStyle(destructive ? Color.red : Color.secondary)
                     .frame(width: 20, height: 20)
                 Text(title)
                     .font(.system(size: 13))
-                    .foregroundStyle(destructive ? Color.red : Color.white.opacity(0.90))
+                    .foregroundStyle(destructive ? Color.red : Color.primary)
                 Spacer(minLength: 6)
                 if let shortcut {
                     PaletteShortcutView(shortcut: shortcut)
@@ -588,7 +584,7 @@ private struct PaletteActionRow: View {
             .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(selected ? Color.white.opacity(0.10) : Color.clear)
+                    .fill(selected ? Color.primary.opacity(0.10) : Color.clear)
             )
         }
         .buttonStyle(.plain)
@@ -604,12 +600,12 @@ private struct PaletteShortcutView: View {
             ForEach(Array(shortcut.enumerated()), id: \.offset) { _, glyph in
                 Text(String(glyph))
                     .font(.system(size: 9, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color.white.opacity(0.54))
+                    .foregroundStyle(Color.secondary)
                     .frame(minWidth: 14, minHeight: 14)
                     .padding(.horizontal, 1)
                     .overlay {
                         RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                            .stroke(Color.primary.opacity(0.18), lineWidth: 1)
                     }
             }
         }

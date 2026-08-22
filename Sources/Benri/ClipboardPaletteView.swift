@@ -18,7 +18,7 @@ struct ClipboardPaletteView: View {
                 .frame(width: 330)
 
             Rectangle()
-                .fill(Color.white.opacity(0.10))
+                .fill(Color.primary.opacity(0.10))
                 .frame(width: 1)
                 .padding(.vertical, 10)
 
@@ -41,7 +41,7 @@ struct ClipboardPaletteView: View {
                     Text(state.clipboardQuery.isEmpty ? "剪贴板历史为空" : "没有匹配内容")
                         .font(.system(size: 13, weight: .medium))
                 }
-                .foregroundStyle(Color.white.opacity(0.45))
+                .foregroundStyle(Color.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollViewReader { proxy in
@@ -96,13 +96,13 @@ private struct ClipboardRow: View {
             thumbnail
             Text(preview)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.88))
+                .foregroundStyle(Color.primary.opacity(0.88))
                 .lineLimit(1)
             Spacer(minLength: 0)
             if item.isPinned {
                 Image(systemName: "pin.fill")
                     .font(.system(size: 10))
-                    .foregroundStyle(Color.white.opacity(0.40))
+                    .foregroundStyle(Color.secondary)
             }
         }
         .padding(.horizontal, 10)
@@ -111,8 +111,8 @@ private struct ClipboardRow: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(
                     selected
-                        ? Color.white.opacity(0.16)
-                        : hovering ? Color.white.opacity(0.07) : Color.clear
+                        ? Color.primary.opacity(0.16)
+                        : hovering ? Color.primary.opacity(0.07) : Color.clear
                 )
         )
         .onHover { hovering = $0 }
@@ -139,12 +139,12 @@ private struct ClipboardRow: View {
                 .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         } else {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(Color.white.opacity(0.10))
+                .fill(Color.primary.opacity(0.10))
                 .frame(width: 32, height: 32)
                 .overlay {
                     Image(systemName: item.kind == .image ? "photo" : "doc.text")
                         .font(.system(size: 12))
-                        .foregroundStyle(Color.white.opacity(0.55))
+                        .foregroundStyle(Color.secondary)
                 }
         }
     }
@@ -169,7 +169,7 @@ private struct ClipboardPreview: View {
                     .font(.system(size: 30, weight: .light))
                 Text("选择一条历史记录以预览")
             }
-            .foregroundStyle(Color.white.opacity(0.35))
+            .foregroundStyle(Color.secondary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
@@ -180,7 +180,7 @@ private struct ClipboardPreview: View {
             ScrollView(.vertical, showsIndicators: false) {
                 Text(item.text ?? "")
                     .font(.system(size: 13, design: .monospaced))
-                    .foregroundStyle(Color.white.opacity(0.86))
+                    .foregroundStyle(Color.primary.opacity(0.86))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .padding(22)
@@ -194,7 +194,7 @@ private struct ClipboardPreview: View {
         } else {
             Image(systemName: "photo")
                 .font(.system(size: 34, weight: .light))
-                .foregroundStyle(Color.white.opacity(0.30))
+                .foregroundStyle(Color.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
@@ -203,7 +203,7 @@ private struct ClipboardPreview: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("信息")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Color.white.opacity(0.42))
+                .foregroundStyle(Color.secondary)
             infoRow("来源", sourceName(item.sourceBundleID))
             infoRow("类型", item.kind == .image ? "图片" : "文本")
             if let text = item.text {
@@ -219,10 +219,10 @@ private struct ClipboardPreview: View {
 
     private func infoRow(_ title: String, _ value: String) -> some View {
         HStack {
-            Text(title).foregroundStyle(Color.white.opacity(0.42))
+            Text(title).foregroundStyle(Color.secondary)
             Spacer()
             Text(value)
-                .foregroundStyle(Color.white.opacity(0.78))
+                .foregroundStyle(Color.primary.opacity(0.78))
                 .lineLimit(1)
                 .truncationMode(.middle)
         }

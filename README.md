@@ -28,9 +28,6 @@
   <img src="Resources/benri-panel-readme.png" width="820" alt="Benri main panel">
 </p>
 
-> [!NOTE]
-> The current `main` branch targets the upcoming v1.1.0 release. The latest public download is still v1.0.0; backup, restore, and diagnostic export will become available with v1.1.0.
-
 ## Highlights
 
 - Open Benri anywhere with a global keyboard shortcut
@@ -111,7 +108,7 @@ Clipboard history starts only after first-use confirmation and is stored as a pl
 ~/Library/Caches/com.crimsonteps.benri/Clipboard/
 ```
 
-It is retained for 90 days by default and can be paused, cleared, or disabled per source application. Benri skips common sensitive pasteboard markers. Clipboard history is excluded from `.benribackup` packages and is not removed by Reset Vault.
+It is retained for 90 days by default, with options ranging from 3 hours to forever, and can be paused, cleared, or disabled per source application. Benri skips common sensitive pasteboard markers. Clipboard history is excluded from `.benribackup` packages and is not removed by Reset Vault.
 
 The key and encrypted vault are stored under the same macOS user account, so Benri cannot defend against software or people that already control the logged-in account. A `.benribackup` package includes the matching recovery key and must be protected like the original data. Benri is a convenience utility, not a replacement for a dedicated password manager. See [SECURITY.md](SECURITY.md) for the complete security boundary.
 

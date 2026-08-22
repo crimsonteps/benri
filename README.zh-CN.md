@@ -28,9 +28,6 @@
   <img src="Resources/benri-panel-readme.png" width="820" alt="Benri 主面板">
 </p>
 
-> [!NOTE]
-> 当前 `main` 分支面向即将发布的 v1.1.0。GitHub 最新公开下载仍是 v1.0.0，备份恢复和诊断导出等新功能会随 v1.1.0 提供。
-
 ## 主要功能
 
 - 使用全局快捷键随时唤起 Benri
@@ -111,7 +108,7 @@ Benri 使用独立的应用支持目录保存数据：
 ~/Library/Caches/com.crimsonteps.benri/Clipboard/
 ```
 
-它默认保留 90 天，可按应用排除、暂停或清空。Benri 会跳过常见的敏感剪贴板标记。剪贴板缓存不会进入 `.benribackup`，也不会随“重置保险库”删除。
+它默认保留 90 天，可选择从 3 小时到永久，并可按应用排除、暂停或清空。Benri 会跳过常见的敏感剪贴板标记。剪贴板缓存不会进入 `.benribackup`，也不会随“重置保险库”删除。
 
 密钥和密文保存在同一个 macOS 用户账户下，因此 Benri 无法防御已经控制当前登录账户的软件或人员。`.benribackup` 文件包含恢复所需的匹配密钥，也需要像原始数据一样妥善保管。Benri 是效率工具，不是专业密码管理器的替代品。完整安全边界见 [SECURITY.md](SECURITY.md)。
 
